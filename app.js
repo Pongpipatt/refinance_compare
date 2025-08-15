@@ -79,6 +79,12 @@ function formatMoneyInput(v) {
   return fmtMoney(v);
 }
 
+function formatTerm(termMonths) {
+  const y = Math.floor(termMonths / 12);
+  const m = termMonths % 12;
+  return `${termMonths} งวด (${y} ปี${m ? " " + m + " เดือน" : ""})`;
+}
+
 function L({ label, children }) {
   return (
     <label className="block text-sm">
@@ -282,6 +288,8 @@ function CompareTable({ banks, onOpenSchedule }) {
         otherCosts: other,
         total3y,
         after3yRate: b.rateAfter,
+        termMonths: term,
+        totalInterestAll: schedule.totalInterest,
       };
     });
   }, [banks]);
@@ -292,7 +300,7 @@ function CompareTable({ banks, onOpenSchedule }) {
   const fmtDelta = (r) => {
     if (r.index === 0 || currentBase === null) return { text: "–", cls: "" };
     const delta = r.total3y - currentBase;
-    if (delta === 0) return { text: "0.00", cls: "" };
+    if (Math.abs(delta) < 0.005) return { text: "0.00", cls: "" };
     if (delta > 0) return { text: `(${fmtMoney(delta)})`, cls: "text-red mono text-right" }; // แพงกว่า (แดง)
     return { text: `${fmtMoney(Math.abs(delta))}`, cls: "text-green mono text-right" }; // ถูกกว่า (เขียว)
   };
@@ -309,6 +317,8 @@ function CompareTable({ banks, onOpenSchedule }) {
             <Th className="text-right">รวม 3 ปี</Th>
             <Th className="text-right">เทียบธนาคารปัจจุบัน</Th>
             <Th className="text-center">ดอกเบี้ยหลัง 3 ปี</Th>
+            <Th className="text-right">จำนวนงวดที่เหลือ</Th>
+            <Th className="text-right">ดอกเบี้ยรวมทั้งสัญญา</Th>
             <Th className="text-center">ตารางผ่อน</Th>
           </tr>
         </thead>
@@ -322,12 +332,12 @@ function CompareTable({ banks, onOpenSchedule }) {
                 <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
                 <Td className="text-right font-semibold mono">
-                  <span className={r.total3y === best ? "badge-best" : ""}>
-                    {fmtMoney(r.total3y)}
-                  </span>
+                  <span className={r.total3y === best ? "badge-best" : ""}>{fmtMoney(r.total3y)}</span>
                 </Td>
                 <Td className={`text-right ${delta.cls}`}>{delta.text}</Td>
                 <Td className="text-center mono">{fmtRate(r.after3yRate)}%</Td>
+                <Td className="text-right mono">{formatTerm(r.termMonths)}</Td>
+                <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
                 <Td className="text-center">
                   <button className="btn-secondary inline-flex items-center gap-1 whitespace-nowrap" onClick={() => onOpenSchedule(r.index)}>
                     ดูงวด
@@ -521,7 +531,7 @@ function App() {
 
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น)
+              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
             </div>
             <CompareTable banks={banks} onOpenSchedule={openSchedule} />
             <div className="text-xs text-gray-500">
