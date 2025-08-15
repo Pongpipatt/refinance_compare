@@ -11,7 +11,7 @@ function pmt(r, n, P) {
   return (P * r * a) / (a - 1);
 }
 
-// ตารางคำนวณ: จ่ายค่างวด (หรือ override) + โปะเพิ่ม (%) ของค่างวดงวดนั้น → ไปหักเงินต้นเพิ่ม
+// ตารางคำนวณ: ค่างวด (หรือ override) + โปะเพิ่ม (%) ของค่างวดงวดนั้น → ไปหักเงินต้นเพิ่ม
 function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOverride = null, prepayPct = 0 }) {
   let balance = principal;
   let remaining = termMonths;
@@ -30,16 +30,10 @@ function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOver
       let principalPay = basePay - interest;
       if (principalPay < 0) principalPay = 0;
 
-      // โปะเพิ่มคิดจากค่างวดของงวดนั้น (basePay)
       const extra = Math.max(0, basePay * (prepayPct / 100));
-
-      // รวมเงินต้นที่ตัดในงวดนี้ = เงินต้นจากค่างวด + ยอดโปะ
       let principalAll = principalPay + extra;
 
-      // ถ้างวดสุดท้ายหรือจ่ายเกิน ให้จำกัดไม่ให้เกินยอดคงเหลือ
-      if (principalAll > balance || remaining === 1) {
-        principalAll = balance;
-      }
+      if (principalAll > balance || remaining === 1) principalAll = balance;
 
       const endBalance = Math.max(0, balance - principalAll);
 
@@ -49,7 +43,7 @@ function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOver
         payment: basePay,
         extraPrepay: extra,
         principal: principalPay,
-        principalTotal: principalAll, // เงินต้นรวม (รวมโปะ)
+        principalTotal: principalAll,
         interest,
         endBalance,
       });
@@ -71,22 +65,18 @@ function sumOtherCosts(otherCosts) {
   return Object.values(otherCosts || {}).reduce((s, v) => s + Number(v || 0), 0);
 }
 
-// ฟอร์แมต
 const fmtMoney = (n) => Number(n || 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtRate  = (n) => Number(n || 0).toFixed(3);
 
-// --------- Helper: อินพุตเงิน/เปอร์เซ็นต์ (ไม่มีลูกศร) ----------
 function parseMoneyInput(str){ if(str===null||str===undefined) return 0; const v=Number(String(str).replace(/,/g,"").trim()); return isFinite(v)?v:0; }
 function formatMoneyInput(v){ if(v===""||v===null||v===undefined) return ""; return fmtMoney(v); }
 
 function MoneyInput({ value, onChange, placeholder }) {
   const [txt, setTxt] = useState(value === null ? "" : formatMoneyInput(value));
   useEffect(()=>setTxt(value === null ? "" : formatMoneyInput(value)),[value]);
-
   const onInput = e => setTxt(e.target.value.replace(/[^0-9.,]/g,""));
   const onBlur  = () => { const v=clamp2(parseMoneyInput(txt)); onChange(v); setTxt(txt.trim()===""? "": formatMoneyInput(v)); };
   const onFocus = e => { const v=parseMoneyInput(txt); e.target.value = v? String(v): ""; };
-
   return <input type="text" inputMode="decimal" className="ipt ipt-num mono" placeholder={placeholder||""} defaultValue={txt} onInput={onInput} onBlur={onBlur} onFocus={onFocus}/>;
 }
 function RateInput({ value, onChange }) {
@@ -109,7 +99,7 @@ const DEFAULT_BANKS = [
     rate3: 5.370,
     rateAfter: 5.370,
     monthlyOverride: 15700,
-    prepayPct: 0.000, // โปะเพิ่มต่องวด (% ของค่างวด)
+    prepayPct: 0.000,
     otherCosts: { MRTA: 0, "ค่าประเมิน": 0, "ค่าจดจำนอง": 0, "ค่าธรรมเนียม": 0, "ค่าปรับปิดก่อน": 0 },
   },
   {
@@ -132,15 +122,14 @@ function useLocalState(key, initial){
   return [state,setState];
 }
 
-// ---------- UI helpers ----------
 function L({ label, children }) {
   return (<label className="block text-sm"><div className="text-gray-600 mb-1">{label}</div>{children}</label>);
 }
 function Th({ children, className = "" }) { return <th className={`text-left ${className}`}>{children}</th>; }
 function Td({ children, className = "" }) { return <td className={`align-top ${className}`}>{children}</td>; }
 
-// ---------- Bank editor ----------
-function BankEditor({ bank, onChange, onRemove }){
+// ---------- Bank editor (เพิ่มปุ่มย้ายลำดับ) ----------
+function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   const handle=(f,v)=>onChange({ ...bank, [f]: v });
   const handleCost=(k,v)=>onChange({ ...bank, otherCosts:{ ...(bank.otherCosts||{}), [k]: v } });
 
@@ -148,7 +137,11 @@ function BankEditor({ bank, onChange, onRemove }){
     <div className="card mb-4">
       <div className="flex items-center justify-between mb-2">
         <input className="text-lg font-semibold outline-none border-b border-gray-300 px-1 bg-transparent" value={bank.name} onChange={(e)=>handle("name", e.target.value)}/>
-        <button className="btn-secondary whitespace-nowrap" onClick={onRemove} title="ลบธนาคาร">ลบธนาคาร</button>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary" onClick={onMoveUp}  title="ย้ายขึ้น">↑ ย้ายขึ้น</button>
+          <button className="btn-secondary" onClick={onMoveDown} title="ย้ายลง">↓ ย้ายลง</button>
+          <button className="btn-secondary" onClick={onRemove}  title="ลบธนาคาร">ลบธนาคาร</button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-4 grid-cols-2 gap-3">
@@ -174,32 +167,43 @@ function BankEditor({ bank, onChange, onRemove }){
   );
 }
 
-// ---------- Compare table ----------
+// ---------- Compare table (แสดงงวดจริงหลังโปะ) ----------
 function formatTerm(termMonths){ const y=Math.floor(termMonths/12), m=termMonths%12; return `${termMonths} งวด (${y} ปี${m? " "+m+" เดือน": ""})`; }
 
 function CompareTable({ banks, onOpenSchedule }){
   const rows = useMemo(()=>banks.map((b,idx)=>{
-    const term = Math.round(b.termYears*12);
+    const planned = Math.round(b.termYears*12);     // แผนเดิม
     const schedule = buildSchedule({
       principal: b.principal,
-      termMonths: term,
+      termMonths: planned,
       rateSchedule: [
         { months:12, rateYear:b.rate1 },
         { months:12, rateYear:b.rate2 },
         { months:12, rateYear:b.rate3 },
-        { months: Math.max(0, term-36), rateYear:b.rateAfter },
+        { months: Math.max(0, planned-36), rateYear:b.rateAfter },
       ],
       monthlyPaymentOverride: b.monthlyOverride,
       prepayPct: b.prepayPct || 0,
     });
+
+    const payoffMonths = schedule.rows.length;      // ← งวดจริงหลังโปะ
     const first36 = schedule.rows.slice(0,36);
     const int3y = first36.reduce((s,r)=>s+r.interest,0);
     const other = sumOtherCosts(b.otherCosts);
     const total3y = int3y + other;
     const estMonthly = first36[0]?.payment || 0;
 
-    return { index:idx, name:b.name, monthly:estMonthly, interest3y:int3y, otherCosts:other, total3y,
-             after3yRate:b.rateAfter, termMonths:term, totalInterestAll: schedule.totalInterest };
+    return {
+      index: idx,
+      name: b.name,
+      monthly: estMonthly,
+      interest3y: int3y,
+      otherCosts: other,
+      total3y,
+      after3yRate: b.rateAfter,
+      payoffMonths,                                // ใช้อันนี้แทน planned
+      totalInterestAll: schedule.totalInterest,
+    };
   }), [banks]);
 
   const currentBase = rows[0]?.total3y ?? null;
@@ -242,7 +246,7 @@ function CompareTable({ banks, onOpenSchedule }){
                 <Td className="text-right font-semibold mono"><span className={r.total3y===best?"badge-best":""}>{fmtMoney(r.total3y)}</span></Td>
                 <Td className={`text-right ${d.cls}`}>{d.text}</Td>
                 <Td className="text-center mono">{fmtRate(r.after3yRate)}%</Td>
-                <Td className="text-right mono">{formatTerm(r.termMonths)}</Td>
+                <Td className="text-right mono">{formatTerm(r.payoffMonths)}</Td>{/* ← ใช้ payoffMonths */}
                 <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
                 <Td className="text-center"><button className="btn-secondary whitespace-nowrap" onClick={()=>onOpenSchedule(r.index)}>ดูงวด</button></Td>
               </tr>
@@ -254,29 +258,29 @@ function CompareTable({ banks, onOpenSchedule }){
   );
 }
 
-// ---------- Schedule view ----------
+// ---------- Schedule view (เดิม) ----------
 const TH_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=new Date(y, m-1+add, 1); const mm=String(d.getMonth()+1).padStart(2,"0"); return `${d.getFullYear()}-${mm}`; }
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
 
 function ScheduleView({ bank }){
-  const term = Math.round(bank.termYears*12);
+  const planned = Math.round(bank.termYears*12);
   const [startYM, setStartYM] = useState(()=>{
     const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`;
   });
 
   const schedule = useMemo(()=>buildSchedule({
     principal: bank.principal,
-    termMonths: term,
+    termMonths: planned,
     rateSchedule: [
       { months:12, rateYear: bank.rate1 },
       { months:12, rateYear: bank.rate2 },
       { months:12, rateYear: bank.rate3 },
-      { months: Math.max(0, term-36), rateYear: bank.rateAfter },
+      { months: Math.max(0, planned-36), rateYear: bank.rateAfter },
     ],
     monthlyPaymentOverride: bank.monthlyOverride,
     prepayPct: bank.prepayPct || 0,
-  }), [bank, term]);
+  }), [bank, planned]);
 
   const totalI = schedule.totalInterest;
   const totalP = schedule.rows.reduce((s,r)=>s + r.principalTotal, 0);
@@ -350,7 +354,7 @@ function ScheduleView({ bank }){
   );
 }
 
-// ---------- App ----------
+// ---------- App (เพิ่มย้ายลำดับ) ----------
 function App(){
   const [banks, setBanks] = useLocalState("mortgage-banks", DEFAULT_BANKS);
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -371,6 +375,15 @@ function App(){
 
   const removeBank = (i)=>setBanks(banks.filter((_,idx)=>idx!==i));
   const updateBank = (i,next)=>setBanks(banks.map((b,idx)=>(idx===i? next: b)));
+
+  // ย้ายลำดับ
+  const moveBank = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= banks.length) return;
+    const arr = banks.slice();
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setBanks(arr);
+  };
 
   const isSchedule = route.startsWith("#/schedule/");
   let scheduleIndex = null; if(isSchedule){ const parts=route.split("/"); scheduleIndex=+parts[2]; }
@@ -393,7 +406,16 @@ function App(){
       {!isSchedule && (
         <div className="space-y-6">
           <div className="space-y-4">
-            {banks.map((b,i)=>(<BankEditor key={i} bank={b} onChange={(next)=>updateBank(i,next)} onRemove={()=>removeBank(i)} />))}
+            {banks.map((b,i)=>(
+              <BankEditor
+                key={i}
+                bank={b}
+                onChange={(next)=>updateBank(i,next)}
+                onRemove={()=>removeBank(i)}
+                onMoveUp={()=>moveBank(i,-1)}
+                onMoveDown={()=>moveBank(i,+1)}
+              />
+            ))}
           </div>
 
           <div className="space-y-3">
