@@ -69,3 +69,11 @@ tbody tr{border-top:1px solid var(--gray-200)}
 .text-green{ color: var(--emerald-600); font-weight:600; }
 .text-red{ color: var(--red-600); font-weight:600; }
 .mono{ font-feature-settings: 'tnum' 1, 'lnum' 1; font-variant-numeric: tabular-nums; }
+
+/* ให้หัวตารางติดอยู่ด้านบนเมื่อเลื่อน */
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb; /* สีพื้นหลังกันโปร่ง */
+  z-index: 2; /* ให้แสดงทับเนื้อหาข้างล่าง */
+}
