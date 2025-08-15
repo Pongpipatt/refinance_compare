@@ -167,7 +167,7 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   );
 }
 
-// ---------- Compare table (แสดงงวดจริงหลังโปะ) ----------
+// ---------- Compare table (แสดงงวดจริงหลังโปะ + สลับคอลัมน์โปะรวม 3 ปี มาก่อนดอกเบี้ยรวม 3 ปี) ----------
 function formatTerm(termMonths){ const y=Math.floor(termMonths/12), m=termMonths%12; return `${termMonths} งวด (${y} ปี${m? " "+m+" เดือน": ""})`; }
 
 function CompareTable({ banks, onOpenSchedule }) {
@@ -191,17 +191,17 @@ function CompareTable({ banks, onOpenSchedule }) {
       const payoffMonths = schedule.rows.length;
       const first36 = schedule.rows.slice(0, 36);
       const int3y = first36.reduce((s, r) => s + r.interest, 0);
-      const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0); // ← โปะรวม 3 ปี
+      const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0); // โปะรวม 3 ปี
       const other = sumOtherCosts(b.otherCosts);
-      const total3y = int3y + other; // ไม่รวมยอดโปะ (ถือเป็นเงินต้นที่เราเลือกจ่ายเพิ่มเอง)
+      const total3y = int3y + other; // ไม่รวมยอดโปะ
       const estMonthly = first36[0]?.payment || 0;
 
       return {
         index: idx,
         name: b.name,
         monthly: estMonthly,
+        prepay3y,
         interest3y: int3y,
-        prepay3y,                   // ← เก็บไว้แสดงคอลัมน์ใหม่
         otherCosts: other,
         total3y,
         after3yRate: b.rateAfter,
@@ -234,7 +234,7 @@ function CompareTable({ banks, onOpenSchedule }) {
           <tr>
             <Th>ธนาคาร</Th>
             <Th className="text-right">ค่างวด/เดือน (ประมาณ)</Th>
-            <Th className="text-right">โปะรวม 3 ปี</Th> {/* ← คอลัมน์ใหม่ */}
+            <Th className="text-right">โปะรวม 3 ปี</Th> {/* ย้ายมาก่อน */}
             <Th className="text-right">ดอกเบี้ยรวม 3 ปี</Th>
             <Th className="text-right">ค่าใช้จ่ายอื่น ๆ</Th>
             <Th className="text-right">รวม 3 ปี</Th>
@@ -252,8 +252,8 @@ function CompareTable({ banks, onOpenSchedule }) {
               <tr key={r.index}>
                 <Td>{r.name}</Td>
                 <Td className="text-right font-medium mono">{fmtMoney(r.monthly)}</Td>
-                <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td> {/* ← แสดงยอดโปะรวม 3 ปี */}
-                <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
+                <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td> {/* แสดงยอดโปะรวม 3 ปี */}
+                <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td> {/* ดอกเบี้ยรวม 3 ปี */}
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
                 <Td className="text-right font-semibold mono">
                   <span className={r.total3y === best ? "badge-best" : ""}>{fmtMoney(r.total3y)}</span>
