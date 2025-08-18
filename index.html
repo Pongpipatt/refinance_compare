@@ -1,23 +1,23 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="th">
-  <head>
-    <meta charset="utf-8" />
-    <title>ตัวช่วยเทียบรีไฟแนนซ์บ้าน</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=" /> <!-- กัน error favicon 404 -->
-    <link rel="stylesheet" href="styles.css"/>
-  </head>
-  <body>
-    <div id="root"></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ตัวช่วยเทียบรีไฟแนนซ์บ้าน — Prepay%</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <!-- Tailwind CDN (ใช้แค่ utility พื้นฐาน) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+  <div id="root"></div>
 
-    <!-- React UMD -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- React + ReactDOM (Production) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel เพื่อให้โหลด JSX จากไฟล์ .js ได้ -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Babel สำหรับ JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- แอป -->
-    <script type="text/babel" src="app.js" data-presets="react,env"></script>
-  </body>
+  <!-- แอปหลัก -->
+  <script type="text/babel" src="app.js"></script>
+</body>
 </html>
