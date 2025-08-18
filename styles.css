@@ -13,6 +13,8 @@
   --emerald-600:#059669;
   --red-50:#fef2f2;
   --red-600:#dc2626;
+  --amber-50:#fffbeb;
+  --amber-600:#d97706;
 }
 
 *{box-sizing:border-box}
@@ -35,30 +37,42 @@ body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubu
 .ipt-num{text-align:right;}
 .mono{ font-feature-settings: 'tnum' 1, 'lnum' 1; font-variant-numeric: tabular-nums; }
 
-/* ปุ่ม: เปลี่ยนจากวงรี (9999px) -> ขอบมนสวยงาม */
+/* -------- Pill buttons (ไม่ให้กลม) -------- */
+.btn,
+.btn-secondary{
+  border-radius:9999px;                 /* pill */
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:.55rem 1rem;
+  line-height:1.2;
+  white-space:normal;                   /* อนุญาตขึ้นบรรทัดใหม่ */
+  text-align:center;
+  text-wrap:balance;                    /* ย่อคำให้อ่านง่าย (เบราว์เซอร์ใหม่) */
+  overflow-wrap:anywhere;               /* กันล้น */
+  max-width:100%;
+  min-height:2.25rem;                   /* กันเตี้ยจนดูเหมือนวงกลม */
+}
+
 .btn{
-  border-radius:12px;
-  padding:.5rem 1rem;
   background:#111827;
   color:#fff;
   border:0;
   cursor:pointer;
-  transition:background .15s ease;
+  transition:background .15s ease, transform .06s ease;
 }
 .btn:hover{background:#1f2937}
-.btn:active{background:#374151}
+.btn:active{background:#374151; transform: translateY(1px);}
 
 .btn-secondary{
-  border-radius:12px;
-  padding:.5rem .75rem;
   background:#fff;
   color:#1f2937;
   border:1px solid var(--gray-300);
   cursor:pointer;
-  transition:background .15s ease;
+  transition:background .15s ease, transform .06s ease;
 }
 .btn-secondary:hover{background:#f9fafb}
-.btn-secondary:active{background:#f3f4f6}
+.btn-secondary:active{background:#f3f4f6; transform: translateY(1px);}
 
 .table-wrap{overflow:auto; border:1px solid var(--gray-200); border-radius:16px; background:#fff; position:relative;}
 table{width:100%; border-collapse:separate; border-spacing:0; font-size:14px}
@@ -68,16 +82,35 @@ tbody tr{border-top:1px solid var(--gray-200)}
 
 .badge-best{background:var(--gray-100); color:#111827; padding:.25rem .5rem; border-radius:12px}
 
-/* สีตัวหนังสือสำหรับ delta */
+/* สีสำหรับ delta */
 .text-green{ color: var(--emerald-600); font-weight:600; }
 .text-red{ color: var(--red-600); font-weight:600; }
 
-/* ไฮไลท์เซลล์: ยอด "รวม" ต่ำสุด/สูงสุด */
+/* ไฮไลท์เซลล์: รวมต่ำสุด/สูงสุด */
 .cell-min{ background: var(--emerald-50); color: var(--emerald-600); font-weight:600; border-radius:8px; padding:.125rem .25rem; }
 .cell-max{ background: var(--red-50); color: var(--red-600); font-weight:600; border-radius:8px; padding:.125rem .25rem; }
 
-/* มุมมองลงทุน (ปีละ): กำหนดความกว้างคอลัมน์ปีให้เท่ากัน */
-.year-col{ width: 6rem; text-align:right; }
+/* มุมมองลงทุน (ปีละ): ความกว้างคอลัมน์ปีเท่ากัน */
+.year-col{ width: 7rem; text-align:right; }
 
-/* หน้าลงทุนเต็มจอ: ลด padding ด้านข้าง */
+/* หน้าลงทุนเต็มจอ */
 .app-wide{ max-width:none !important; padding-left:.5rem !important; padding-right:.5rem !important; }
+
+/* -------- Focus Mode (Compare Fullscreen) -------- */
+.focus-layer{
+  position:fixed; inset:0; z-index:60;
+  background:rgba(17,24,39,.55);       /* ดำโปร่ง */
+  display:flex; align-items:center; justify-content:center;
+  padding:1rem;
+}
+.focus-box{
+  width:min(1400px, 98vw); height:min(90vh, 96vh);
+  background:#fff; border-radius:16px; box-shadow:0 10px 24px rgba(0,0,0,.18);
+  display:flex; flex-direction:column; padding:1rem;
+}
+.focus-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem}
+.focus-close{border:none; background:#fff; border:1px solid var(--gray-300); border-radius:9999px; padding:.35rem .7rem; cursor:pointer}
+.focus-body{flex:1; min-height:0}
+
+/* Cap alert (เพดาน/เดือนเกิน) */
+.cap-alert{ background: var(--amber-50); color: var(--amber-600); border-radius:8px; padding:.125rem .25rem; font-weight:600;}
