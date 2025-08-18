@@ -9,8 +9,6 @@
   --rose-50:#fff1f2;
   --rose-100:#ffe4e6;
   --rose-200:#fecdd3;
-  --emerald-50:#ecfdf5;
-  --emerald-100:#d1fae5;
   --emerald-600:#059669;
   --red-600:#dc2626;
 }
@@ -69,19 +67,3 @@ tbody tr{border-top:1px solid var(--gray-200)}
 
 .text-green{ color: var(--emerald-600); font-weight:600; }
 .text-red{ color: var(--red-600); font-weight:600; }
-
-/* ===== ไฮไลท์ตามที่ขอ ===== */
-.badge-good{
-  background: var(--emerald-50);
-  color: var(--emerald-600);
-  padding: .25rem .5rem;
-  border-radius: 12px;
-  font-weight: 700;
-}
-.badge-bad{
-  background: var(--rose-100);
-  color: var(--red-600);
-  padding: .25rem .5rem;
-  border-radius: 12px;
-  font-weight: 700;
-}
