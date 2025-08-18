@@ -242,12 +242,12 @@ function CompareTable({ banks, onOpenSchedule, onToggleFocus, showFocus }) {
   );
 }
 
-/* ========== Schedule View (เพิ่มปุ่มไปมุมมองลงทุน) ========== */
+/* ========== Schedule View (ลบปุ่มไปมุมมองลงทุน + ปรับปุ่มเป็น Export) ========== */
 const TH_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=new Date(y, m-1+add, 1); const mm=String(d.getMonth()+1).padStart(2,"0"); return `${d.getFullYear()}-${mm}`; }
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
 
-function ScheduleView({ bank, onOpenInvest }) {
+function ScheduleView({ bank }) {
   const planned = Math.round(bank.termYears * 12);
   const [startYM, setStartYM] = useState(() => { const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`; });
 
@@ -260,7 +260,7 @@ function ScheduleView({ bank, onOpenInvest }) {
   const totalI = schedule.totalInterest;
   const totalP = schedule.rows.reduce((s, r) => s + r.principalTotal, 0);
 
-  const downloadCSV = () => {
+  const exportCSV = () => {
     const header = ["เดือน","งวด","อัตราดอกเบี้ย(%)","ค่างวด","โปะเพิ่ม","เงินต้น","เงินต้นรวม","ดอกเบี้ย","คงเหลือ"].join(",");
     const body = schedule.rows.map((r, idx) =>
       [thaiMonthLabel(addMonthsYM(startYM, idx)), r.index, fmtRate(r.rate), r.payment.toFixed(2), r.extraPrepay.toFixed(2), r.principal.toFixed(2), r.principalTotal.toFixed(2), r.interest.toFixed(2), r.endBalance.toFixed(2)].join(",")
@@ -276,10 +276,9 @@ function ScheduleView({ bank, onOpenInvest }) {
       <div className="flex items-center justify-between">
         <div className="text-lg font-semibold">ตารางผ่อน: {bank.name}</div>
         <div className="flex items-center gap-2">
-          <button className="btn-secondary" onClick={onOpenInvest} title="ไปดูมุมมองลงทุน (ปีละ)">ดูมุมมองลงทุน</button>
           <label className="text-sm text-gray-600">เริ่มเดือน:</label>
           <input type="month" className="ipt mono" value={startYM} onChange={(e) => setStartYM(e.target.value)} />
-          <button className="btn" onClick={downloadCSV}>ดาวน์โหลด CSV</button>
+          <button className="btn" onClick={exportCSV}>Export</button>
         </div>
       </div>
       <div className="text-sm text-gray-600">
@@ -318,21 +317,24 @@ function ScheduleView({ bank, onOpenInvest }) {
   );
 }
 
-/* ========== Investment View (ละเอียด + สะสม + CSV + กราฟ) ========== */
+/* ========== Investment View (เพิ่ม sub row + กราฟ Base/โปะ/ลงทุน + เลือกธนาคาร) ========== */
 function InvestmentView({ banks }) {
   // ค่าปรับแต่ง
   const [overridePrepayPct, setOverridePrepayPct] = useState(""); // % ลงทุน (โปะ)
-  const [monthlyCap, setMonthlyCap] = useState("");               // เพดาน/เดือน
-  const [expectReturn, setExpectReturn] = useState("7");           // % ผลตอบแทนคาดหวัง/ปี (แก้ได้)
+  const [monthlyCap, setMonthlyCap] = useState("");               // เพดาน/เดือน (เตือน)
+  const [expectReturn, setExpectReturn] = useState("7");           // % ผลตอบแทนคาดหวัง/ปี
   const [showChart, setShowChart] = useState(false);
+  const [chartBankIndex, setChartBankIndex] = useState(0);
   const canvasRef = useRef(null);
 
-  // คำนวณข้อมูลต่อปี + สะสม และมูลค่าเติบโตจากการลงทุน (ก้อนต่อปีเติบโตปีถัดๆ ไป)
+  // คำนวณข้อมูลต่อปี + สะสม ทั้งกรณี Base (ไม่โปะ) และกรณีมีโปะ/นำไปลงทุน
   const data = useMemo(() => {
     return banks.map((b) => {
       const termMonths = Math.round(b.termYears * 12);
-      const usePct = overridePrepayPct === "" ? (b.prepayPct || 0) : Number(overridePrepayPct || 0);
-      const schedule = buildSchedule({
+      const pctUse = overridePrepayPct === "" ? (b.prepayPct || 0) : Number(overridePrepayPct || 0);
+
+      // ตาราง “มีโปะ”
+      const schedWithPrepay = buildSchedule({
         principal: b.principal, termMonths,
         rateSchedule: [
           { months: 12, rateYear: b.rate1 },
@@ -341,46 +343,82 @@ function InvestmentView({ banks }) {
           { months: Math.max(0, termMonths - 36), rateYear: b.rateAfter },
         ],
         monthlyPaymentOverride: b.monthlyOverride,
-        prepayPct: usePct,
+        prepayPct: pctUse,
       });
 
-      const years = Math.ceil(schedule.rows.length / 12);
+      // ตาราง “Base ไม่โปะ”
+      const schedBase = buildSchedule({
+        principal: b.principal, termMonths,
+        rateSchedule: [
+          { months: 12, rateYear: b.rate1 },
+          { months: 12, rateYear: b.rate2 },
+          { months: 12, rateYear: b.rate3 },
+          { months: Math.max(0, termMonths - 36), rateYear: b.rateAfter },
+        ],
+        monthlyPaymentOverride: b.monthlyOverride,
+        prepayPct: 0,
+      });
+
+      const years = Math.max(Math.ceil(schedWithPrepay.rows.length / 12), Math.ceil(schedBase.rows.length / 12));
       const perYear = [];
-      let cumInterest = 0, cumInvest = 0;
-      const r = (Number(expectReturn || 0) / 100); // คาดหวังผลตอบแทน/ปี
+      let cumInterestWith = 0;
+      let cumInterestBase = 0;
+      let cumInvest = 0;
+      const rYear = (Number(expectReturn || 0) / 100);
+      const cap = Number(monthlyCap || 0);
 
       for (let y = 0; y < years; y++) {
-        const slice = schedule.rows.slice(y * 12, y * 12 + 12);
-        const interest = slice.reduce((s, r) => s + r.interest, 0);
-        const invest = slice.reduce((s, r) => s + r.extraPrepay, 0);           // “ยอดลงทุน” จากการโปะ
-        const endBal = slice.length ? slice[slice.length - 1].endBalance : 0;  // เงินต้นคงเหลือปลายปี
-        const cap = Number(monthlyCap || 0);
-        const anyCapExceed = cap > 0 ? slice.some(row => (row.payment + row.extraPrepay) > cap + 1e-6) : false;
+        const sliceWith = schedWithPrepay.rows.slice(y * 12, y * 12 + 12);
+        const sliceBase = schedBase.rows.slice(y * 12, y * 12 + 12);
 
-        cumInterest += interest;
-        cumInvest += invest;
+        const interestWith = sliceWith.reduce((s, row) => s + row.interest, 0);
+        const interestBase = sliceBase.reduce((s, row) => s + row.interest, 0);
+        const investThisYear = sliceWith.reduce((s, row) => s + row.extraPrepay, 0); // เงินที่ “จะโปะ” = เงินไปลงทุนแทนได้
 
-        // มูลค่าเติบโตสะสม: เงินที่ลงทุนในปีที่ t จะเติบโต (ปีที่ปัจจุบัน - ปีที่t) ครั้ง
-        // เพื่อความง่าย: ถือว่าลงทุนปลายปี -> ณ สิ้นปี y เงินปีนี้ยังไม่งอก (ยอมรับเป็นค่า conservative)
+        cumInterestWith += interestWith;
+        cumInterestBase += interestBase;
+        cumInvest += investThisYear;
+
+        // เช็ค cap เตือน ถ้ายอดจ่ายต่อเดือน (ค่างวด+โปะ) เกินเพดาน
+        const anyCapExceed = cap > 0 ? sliceWith.some(row => (row.payment + row.extraPrepay) > cap + 1e-6) : false;
+
+        // เงินลงทุนเติบโตแบบคิดเป็นก้อน “ปลายปี” (conservative)
         let grown = 0;
         for (let k = 0; k <= y; k++) {
-          const invK = schedule.rows.slice(k * 12, k * 12 + 12).reduce((s, r) => s + r.extraPrepay, 0);
-          const yearsHeld = y - k; // เงินปี k ถือไว้ yearsHeld ปี
-          grown += invK * Math.pow(1 + r, yearsHeld);
+          const invK = schedWithPrepay.rows.slice(k * 12, k * 12 + 12).reduce((s, r) => s + r.extraPrepay, 0);
+          const yearsHeld = y - k;
+          grown += invK * Math.pow(1 + rYear, yearsHeld);
         }
 
         perYear.push({
           yearIndex: y + 1,
-          interestYear: interest,
-          endBalYear: endBal,
-          investYear: invest,
-          cumInterest,            // ดอกเบี้ยรวมสะสม
-          cumInvest,              // เงินลงทุนสะสม (ผลรวมโปะ)
-          investGrown: grown,     // เงินลงทุนที่เติบโต (สะสม ณ สิ้นปี)
-          capExceed: anyCapExceed
+          // ตารางแสดงผลหลัก (sub row)
+          cumInterest: cumInterestWith,                  // ดอกเบี้ยรวมสะสม (กรณีมีโปะ)
+          endBalYear: sliceWith.length ? sliceWith[sliceWith.length - 1].endBalance : 0,
+          cumInvest,                                     // เงินลงทุนสะสม (ผลรวมยอดโปะ)
+          investGrown: grown,                            // มูลค่าเงินลงทุนที่เติบโต (สิ้นปี)
+          capExceed: anyCapExceed,
+
+          // สำหรับกราฟ 3 เส้น
+          savedInterestYear: Math.max(0, interestBase - interestWith),  // ดอกเบี้ยที่ “ประหยัด” ได้ในปีนี้
+          // จะใช้สะสมทีหลัง
         });
       }
-      return { name: b.name, years: perYear };
+
+      // เตรียม array สำหรับกราฟ 3 เส้น (สะสมตามปี)
+      let cumSaved = 0;
+      const chartBase = [];           // เส้นฐาน (0)
+      const chartPrepay = [];         // สะสม “ดอกเบี้ยที่ประหยัดได้”
+      const chartInvest = [];         // มูลค่าเงินลงทุนที่เติบโต
+
+      perYear.forEach((y) => {
+        cumSaved += y.savedInterestYear;
+        chartBase.push(0);
+        chartPrepay.push(cumSaved);
+        chartInvest.push(y.investGrown);
+      });
+
+      return { name: b.name, years: perYear, chartSeries: { base: chartBase, prepay: chartPrepay, invest: chartInvest } };
     });
   }, [banks, overridePrepayPct, monthlyCap, expectReturn]);
 
@@ -389,12 +427,11 @@ function InvestmentView({ banks }) {
   // Export CSV (ข้อมูลสะสม + ต่อปี)
   const exportCSV = () => {
     const header = [
-      "ธนาคาร","ปี","ดอกเบี้ยสะสม","เงินต้นคงเหลือปลายปี","เงินลงทุนปีนี้",
-      "เงินลงทุนสะสม","เงินลงทุนที่เติบโต(สิ้นปี)"
+      "ธนาคาร","ปี","ดอกเบี้ยสะสม(มีโปะ)","เงินต้นคงเหลือปลายปี","เงินลงทุนปีนี้(เท่ากับยอดโปะ)","เงินลงทุนสะสม","เงินลงทุนที่เติบโต(สิ้นปี)"
     ].join(",");
     const body = data.map(d =>
       d.years.map(y =>
-        [d.name, y.yearIndex, y.cumInterest.toFixed(2), y.endBalYear.toFixed(2), y.investYear.toFixed(2), y.cumInvest.toFixed(2), y.investGrown.toFixed(2)].join(",")
+        [d.name, y.yearIndex, y.cumInterest.toFixed(2), y.endBalYear.toFixed(2), (y.yearIndex===1? (y.cumInvest) : (y.cumInvest - (d.years[y.yearIndex-2]?.cumInvest||0))).toFixed(2), y.cumInvest.toFixed(2), y.investGrown.toFixed(2)].join(",")
       ).join("\r\n")
     ).join("\r\n");
     const csv = "\uFEFF" + header + "\r\n" + body;
@@ -403,7 +440,7 @@ function InvestmentView({ banks }) {
     a.href=url; a.download="investment_view_cumulative.csv"; a.click(); URL.revokeObjectURL(url);
   };
 
-  // วาดกราฟง่ายๆ ด้วย canvas (แกน X ปี, Y ยอดเงิน) — plot เส้น “เงินลงทุนที่เติบโต(สิ้นปี)” ของแต่ละธนาคาร
+  // วาดกราฟ 3 เส้น: Base (0), Prepay (ดอกเบี้ยประหยัดสะสม), Invest (มูลค่าลงทุนที่เติบโต)
   useEffect(() => {
     if (!showChart) return;
     const canvas = canvasRef.current;
@@ -414,60 +451,65 @@ function InvestmentView({ banks }) {
     const H = canvas.clientHeight * dpi;
     canvas.width = W; canvas.height = H;
 
-    // เตรียมข้อมูล
-    const series = data.map(d => d.years.map(y => y.investGrown));
-    const maxY = Math.max(1, ...series.flat());
+    // ข้อมูลของธนาคารที่เลือก
+    const d = data[chartBankIndex];
+    if (!d) return;
+    const series = [d.chartSeries.base, d.chartSeries.prepay, d.chartSeries.invest];
+    const labels = ["Base (ไม่โปะ)", "โปะโดยตรง — ดอกเบี้ยที่ประหยัดสะสม", "เอาไปลงทุน — มูลค่าลงทุนเติบโต"];
+    const colors = ["#6b7280", "#059669", "#2563eb"];
+
+    const allY = series.flat();
+    const maxY = Math.max(1, ...allY);
     const pad = 40 * dpi;
     const plotW = W - pad*2, plotH = H - pad*2;
 
-    // พื้นหลัง
+    // พื้นหลัง + กริด
     ctx.clearRect(0,0,W,H);
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,W,H);
     ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1;
-
-    // เส้นกริดแนวนอน 5 เส้น
     for (let i=0;i<=5;i++){
       const y = pad + plotH*(i/5);
       ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
-      // y-label
       ctx.fillStyle="#6b7280"; ctx.font = `${12*dpi}px sans-serif`;
       const val = maxY*(i/5);
       ctx.fillText(fmtMoney(val), 6*dpi, y-4*dpi);
     }
-
-    // แกน X labels
     ctx.fillStyle="#6b7280"; ctx.font = `${12*dpi}px sans-serif`;
-    for (let i=0;i<maxYears;i++){
-      const x = pad + plotW * (i/(Math.max(1,maxYears-1)));
+    const maxYearsLocal = d.years.length;
+    for (let i=0;i<maxYearsLocal;i++){
+      const x = pad + plotW * (i/(Math.max(1,maxYearsLocal-1)));
       ctx.fillText(`ปี ${i+1}`, x-10*dpi, H - 8*dpi);
     }
 
-    // วาดเส้นต่อชุด
-    const colors = ["#111827","#059669","#dc2626","#2563eb","#d97706","#7c3aed"];
     series.forEach((arr, si) => {
       ctx.beginPath();
       arr.forEach((v, i) => {
         const x = pad + plotW * (i/(Math.max(1,arr.length-1)));
-        const y = pad + plotH * (1 - v/maxY);
+        const y = pad + plotH * (1 - (v / maxY));
         if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
       });
       ctx.strokeStyle = colors[si % colors.length];
       ctx.lineWidth = 2*dpi;
       ctx.stroke();
 
-      // ชื่อชุด (legend) ด้านบนซ้ายเรียงๆ
+      // legend
+      const y0 = pad + (si*18*dpi);
       ctx.fillStyle = colors[si % colors.length];
-      ctx.fillRect(W - pad - 140*dpi, pad + (si*18*dpi), 10*dpi, 10*dpi);
+      ctx.fillRect(W - pad - 220*dpi, y0, 10*dpi, 10*dpi);
       ctx.fillStyle = "#111827";
-      ctx.fillText(banks[si]?.name ?? `ธนาคาร ${si+1}`, W - pad - 124*dpi, pad + (si*18*dpi) + 10*dpi);
+      ctx.fillText(labels[si], W - pad - 204*dpi, y0 + 10*dpi);
     });
-  }, [showChart, data, banks, maxYears]);
+  }, [showChart, data, chartBankIndex]);
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="text-lg font-semibold">มุมมองลงทุน (แบบละเอียด: ต่อปี)</div>
         <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">เลือกธนาคาร (สำหรับกราฟ)</label>
+          <select className="ipt" style={{width:220}} value={chartBankIndex} onChange={(e)=>setChartBankIndex(+e.target.value)}>
+            {banks.map((b, i)=> <option key={b.id} value={i}>{b.name}</option>)}
+          </select>
           <label className="text-sm text-gray-600">ลงทุนเพิ่ม (%)</label>
           <input className="ipt ipt-num mono" style={{width:90}} placeholder="เช่น 5" defaultValue={overridePrepayPct} onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}/>
           <label className="text-sm text-gray-600">เพดาน/เดือน (บาท)</label>
@@ -480,6 +522,7 @@ function InvestmentView({ banks }) {
         </div>
       </div>
 
+      {/* ตารางแบบมี sub row ชัดเจน */}
       <div className="table-wrap" style={{ maxHeight: "75vh" }}>
         <table className="text-sm">
           <thead>
@@ -489,33 +532,42 @@ function InvestmentView({ banks }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => (
+            {data.map((d, di) => (
               <React.Fragment key={d.name}>
-                {/* ดอกเบี้ยรวมสะสม */}
+                {/* หัวชื่อธนาคารคั่นบล็อก */}
+                <tr className="bank-divider"><Td colSpan={maxYears + 1}>{d.name}</Td></tr>
+
+                {/* 1) ดอกเบี้ยรวมสะสม */}
                 <tr>
-                  <Td rowSpan={4} className="whitespace-nowrap align-top font-medium">{d.name}</Td>
+                  <Td className="sub-label">ดอกเบี้ยรวมสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
-                    <Td key={`ci-${i}`} className={`text-right mono ${d.years[i]?.capExceed ? "cap-alert" : ""}`}>
+                    <Td key={`ci-${di}-${i}`} className={`text-right mono ${d.years[i]?.capExceed ? "cap-alert" : ""}`}>
                       {fmtMoney(d.years[i]?.cumInterest || 0)}
                     </Td>
                   ))}
                 </tr>
-                {/* เงินต้นคงเหลือปลายปี */}
+
+                {/* 2) เงินต้นคงเหลือปลายปี */}
                 <tr>
+                  <Td className="sub-label">เงินต้นคงเหลือปลายปี</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
-                    <Td key={`bal-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.endBalYear || 0)}</Td>
+                    <Td key={`bal-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.endBalYear || 0)}</Td>
                   ))}
                 </tr>
-                {/* เงินลงทุนปีนี้ (จากโปะ) สะสม */}
+
+                {/* 3) เงินลงทุนสะสม (จากยอดโปะ) */}
                 <tr>
+                  <Td className="sub-label">เงินลงทุนสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
-                    <Td key={`cumInv-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInvest || 0)}</Td>
+                    <Td key={`cumInv-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInvest || 0)}</Td>
                   ))}
                 </tr>
-                {/* เงินลงทุนที่เติบโต (สิ้นปี) */}
+
+                {/* 4) มูลค่าเงินลงทุนที่เติบโต (สิ้นปี) */}
                 <tr>
+                  <Td className="sub-label">เงินลงทุนที่เติบโต (สิ้นปี)</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
-                    <Td key={`grown-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investGrown || 0)}</Td>
+                    <Td key={`grown-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investGrown || 0)}</Td>
                   ))}
                 </tr>
 
@@ -527,7 +579,7 @@ function InvestmentView({ banks }) {
       </div>
 
       <div className="text-xs text-gray-500">
-        แถว 1 = ดอกเบี้ยรวมสะสม • แถว 2 = เงินต้นคงเหลือปลายปี • แถว 3 = เงินลงทุนสะสม (รวมโปะถึงสิ้นปี) • แถว 4 = มูลค่าเงินลงทุนที่เติบโต ณ สิ้นปี (ใช้อัตราคาดหวังที่ตั้งไว้)
+        แถว 1 = ดอกเบี้ยรวมสะสม (กรณีมีโปะ) • แถว 2 = เงินต้นคงเหลือปลายปี • แถว 3 = เงินลงทุนสะสม (รวมยอดโปะถึงสิ้นปี) • แถว 4 = มูลค่าเงินลงทุนที่เติบโต (ใช้อัตราคาดหวัง)
         <br/>มีไฮไลท์สีเหลืองเมื่อค่างวด+โปะ **เกินเพดาน/เดือน** ที่กำหนด
       </div>
 
@@ -536,7 +588,7 @@ function InvestmentView({ banks }) {
         <div className="chart-modal" onClick={()=>setShowChart(false)}>
           <div className="chart-box" onClick={(e)=>e.stopPropagation()}>
             <div className="chart-head">
-              <div className="font-semibold">กราฟมูลค่าเงินลงทุนที่เติบโต (แกน Y = ยอดเงิน, แกน X = ปี)</div>
+              <div className="font-semibold">กราฟเทียบ 3 เส้น — {banks[chartBankIndex]?.name || "เลือกธนาคาร"} (แกน Y = บาท, แกน X = ปี)</div>
               <button className="focus-close" onClick={()=>setShowChart(false)}>✕ ปิด</button>
             </div>
             <div className="chart-body">
@@ -678,7 +730,7 @@ function App() {
       {isSchedule && banks[scheduleIndex] && (
         <div className="space-y-4">
           <button className="btn-secondary" onClick={goHome}>← กลับ</button>
-          <ScheduleView bank={banks[scheduleIndex]} onOpenInvest={openInvest} />
+          <ScheduleView bank={banks[scheduleIndex]} />
         </div>
       )}
     </div>

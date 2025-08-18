@@ -1,20 +1,9 @@
 :root{
-  --gray-50:#f9fafb;
-  --gray-100:#f3f4f6;
-  --gray-200:#e5e7eb;
-  --gray-300:#d1d5db;
-  --gray-700:#374151;
-  --gray-800:#1f2937;
-  --gray-900:#111827;
-  --rose-50:#fff1f2;
-  --rose-100:#ffe4e6;
-  --rose-200:#fecdd3;
-  --emerald-50:#ecfdf5;
-  --emerald-600:#059669;
-  --red-50:#fef2f2;
-  --red-600:#dc2626;
-  --amber-50:#fffbeb;
-  --amber-600:#d97706;
+  --gray-50:#f9fafb; --gray-100:#f3f4f6; --gray-200:#e5e7eb; --gray-300:#d1d5db;
+  --gray-700:#374151; --gray-800:#1f2937; --gray-900:#111827;
+  --emerald-50:#ecfdf5; --emerald-600:#059669;
+  --red-50:#fef2f2; --red-600:#dc2626;
+  --amber-50:#fffbeb; --amber-600:#d97706;
 }
 
 *{box-sizing:border-box}
@@ -22,47 +11,22 @@ body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubu
 
 .card{border:1px solid var(--gray-200); background:#fff; border-radius:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); padding:1rem;}
 
-.ipt{
-  width:100%;
-  border:1px solid var(--gray-300);
-  background:#f9fafb;
-  border-radius:12px;
-  padding:.5rem .75rem;
-  outline:none;
-  -moz-appearance: textfield;
-}
-.ipt::-webkit-outer-spin-button,
-.ipt::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ipt{width:100%; border:1px solid var(--gray-300); background:#f9fafb; border-radius:12px; padding:.5rem .75rem; outline:none; -moz-appearance: textfield;}
+.ipt::-webkit-outer-spin-button,.ipt::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0;}
 .ipt:focus{box-shadow:0 0 0 3px rgba(209,213,219,.7); border-color:#cbd5e1}
 .ipt-num{text-align:right;}
-.mono{ font-feature-settings: 'tnum' 1, 'lnum' 1; font-variant-numeric: tabular-nums; }
+.mono{font-feature-settings:'tnum' 1,'lnum' 1; font-variant-numeric:tabular-nums}
 
-/* ---------- Pill buttons: บังคับเป็น "แคปซูล" ไม่ใช่วงกลม ---------- */
-.btn,
-.btn-secondary{
-  border-radius:9999px;
-  display:inline-flex; align-items:center; justify-content:center;
-  padding:.55rem 1rem;
-  line-height:1.25;
-  white-space:normal; text-align:center;
-  text-wrap:balance; overflow-wrap:anywhere;
-  min-height:2.4rem;      /* สูงพอให้ดูเป็นปุ่ม */
-  min-width:6.5ch;        /* บังคับให้กว้างกว่า สูง -> ไม่เป็นทรงกลม */
-  max-width:100%;
+/* Pill buttons (บังคับเป็นแคปซูลไม่กลม) */
+.btn,.btn-secondary{
+  border-radius:9999px; display:inline-flex; align-items:center; justify-content:center;
+  padding:.55rem 1rem; line-height:1.25; white-space:normal; text-wrap:balance; overflow-wrap:anywhere;
+  min-height:2.4rem; min-width:6.5ch; max-width:100%;
 }
-.btn{
-  background:#111827; color:#fff; border:0; cursor:pointer;
-  transition:background .15s ease, transform .06s ease;
-}
-.btn:hover{background:#1f2937}
-.btn:active{background:#374151; transform: translateY(1px);}
-
-.btn-secondary{
-  background:#fff; color:#1f2937; border:1px solid var(--gray-300); cursor:pointer;
-  transition:background .15s ease, transform .06s ease;
-}
-.btn-secondary:hover{background:#f9fafb}
-.btn-secondary:active{background:#f3f4f6; transform: translateY(1px);}
+.btn{background:#111827; color:#fff; border:0; cursor:pointer; transition:background .15s, transform .06s}
+.btn:hover{background:#1f2937} .btn:active{background:#374151; transform:translateY(1px)}
+.btn-secondary{background:#fff; color:#1f2937; border:1px solid var(--gray-300); cursor:pointer; transition:background .15s, transform .06s}
+.btn-secondary:hover{background:#f9fafb} .btn-secondary:active{background:#f3f4f6; transform:translateY(1px)}
 
 /* ตาราง */
 .table-wrap{overflow:auto; border:1px solid var(--gray-200); border-radius:16px; background:#fff; position:relative;}
@@ -70,30 +34,27 @@ table{width:100%; border-collapse:separate; border-spacing:0; font-size:14px}
 th,td{padding:.5rem .75rem; text-align:left}
 thead th{font-weight:700; background:var(--gray-100); color:#1f2937; position:sticky; top:0; z-index:2;}
 tbody tr{border-top:1px solid var(--gray-200)}
+.text-green{color:var(--emerald-600); font-weight:600} .text-red{color:var(--red-600); font-weight:600}
+.cell-min{background:var(--emerald-50); color:var(--emerald-600); font-weight:600; border-radius:8px; padding:.125rem .25rem}
+.cell-max{background:var(--red-50); color:var(--red-600); font-weight:600; border-radius:8px; padding:.125rem .25rem}
 
-.badge-best{background:var(--gray-100); color:#111827; padding:.25rem .5rem; border-radius:12px}
-.text-green{ color: var(--emerald-600); font-weight:600; }
-.text-red{ color: var(--red-600); font-weight:600; }
-.cell-min{ background: var(--emerald-50); color: var(--emerald-600); font-weight:600; border-radius:8px; padding:.125rem .25rem; }
-.cell-max{ background: var(--red-50); color: var(--red-600); font-weight:600; border-radius:8px; padding:.125rem .25rem; }
+/* ลงทุน */
+.year-col{width:7rem; text-align:right}
+.app-wide{max-width:none !important; padding-left:.5rem !important; padding-right:.5rem !important;}
+.sub-label{white-space:nowrap; color:#374151; font-weight:600}        /* ป้ายชื่อ sub-row */
+.bank-divider td{background:#fafafa; font-weight:700; color:#111827;} /* แถวหัวชื่อธนาคารในหน้าลงทุน */
 
-/* มุมมองลงทุน */
-.year-col{ width: 7rem; text-align:right; }
-.app-wide{ max-width:none !important; padding-left:.5rem !important; padding-right:.5rem !important; }
-
-/* Focus Mode (Compare Fullscreen) */
-.focus-layer{ position:fixed; inset:0; z-index:60; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; padding:1rem; }
-.focus-box{ width:min(1400px, 98vw); height:min(90vh, 96vh); background:#fff; border-radius:16px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column; padding:1rem; }
+.focus-layer{position:fixed; inset:0; z-index:60; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; padding:1rem}
+.focus-box{width:min(1400px,98vw); height:min(90vh,96vh); background:#fff; border-radius:16px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column; padding:1rem}
 .focus-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem}
 .focus-close{border:none; background:#fff; border:1px solid var(--gray-300); border-radius:9999px; padding:.35rem .7rem; cursor:pointer}
 .focus-body{flex:1; min-height:0}
 
-/* Cap alert (เพดาน/เดือนเกิน) */
-.cap-alert{ background: var(--amber-50); color: var(--amber-600); border-radius:8px; padding:.125rem .25rem; font-weight:600; }
+.cap-alert{ background:var(--amber-50); color:var(--amber-600); border-radius:8px; padding:.125rem .25rem; font-weight:600; }
 
-/* Modal กราฟ */
+/* กราฟ */
 .chart-modal{ position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:1rem;}
 .chart-box{ width:min(1100px,95vw); height:min(80vh,95vh); background:#fff; border-radius:16px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column;}
-.chart-head{ padding:.75rem 1rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--gray-200);}
-.chart-body{ padding:1rem; flex:1; min-height:0; }
-.chart-body canvas{ width:100%; height:100%; }
+.chart-head{ padding:.75rem 1rem; display:flex; align-items:center; gap:.5rem; justify-content:space-between; border-bottom:1px solid var(--gray-200);}
+.chart-body{ padding:1rem; flex:1; min-height:0;}
+.chart-body canvas{ width:100%; height:100%;}
