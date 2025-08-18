@@ -3,10 +3,10 @@
 html, body { height: 100%; }
 body {
   margin: 0;
-  font-family: 'Prompt', system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", Arial, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", "Noto Sans", Arial, sans-serif;
   background: #f9fafb;
   color: #111827;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 /* ===== Inputs ===== */
@@ -33,9 +33,7 @@ body {
 .btn-secondary:hover { background: #f3f4f6; }
 
 /* ===== Cards ===== */
-.card {
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem;
-}
+.card { background:#fff; border:1px solid #e5e7eb; border-radius:0.75rem; padding:1rem; }
 
 /* ===== Table wrappers ===== */
 .table-wrap {
@@ -47,7 +45,7 @@ body {
 
 /* ตารางทั่วไป */
 table { border-collapse: collapse; width: 100%; }
-th, td { padding: 0.55rem 0.7rem; border-bottom: 1px solid #eef2f7; font-size: 13.5px; }
+th, td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #eef2f7; font-size: 13.5px; }
 th { font-weight: 600; background: #fff; text-align: left; }
 td { vertical-align: top; }
 
@@ -61,8 +59,8 @@ th { position: sticky; top: 0; z-index: 1; border-bottom: 1px solid #e5e7eb; }
 }
 
 /* Highlight best/worst */
-.badge-best  { background: #e8f7ec; color: #0c7a43; padding: 0.1rem 0.35rem; border-radius: 0.45rem; }
-.badge-worst { background: #fdeeee; color: #b42318; padding: 0.1rem 0.35rem; border-radius: 0.45rem; }
+.badge-best  { background: #e8f7ec; color: #0c7a43; padding: 0.12rem 0.4rem; border-radius: 0.45rem; }
+.badge-worst { background: #fdeeee; color: #b42318; padding: 0.12rem 0.4rem; border-radius: 0.45rem; }
 
 /* ===== Layout helpers ===== */
 .max-w-6xl { max-width: 72rem; }
@@ -80,6 +78,7 @@ th { position: sticky; top: 0; z-index: 1; border-bottom: 1px solid #e5e7eb; }
 .rounded-2xl { border-radius: 1rem; }
 .bg-gray-900 { background: #111827; } .text-white { color: #fff; }
 .grid { display: grid; } .place-items-center { place-items: center; }
+.border-b { border-bottom: 1px solid #e5e7eb; }
 
 /* ===== Investment full-bleed ===== */
 .container-bleed { max-width: none !important; padding-left: 0 !important; padding-right: 0 !important; }
@@ -88,6 +87,7 @@ th { position: sticky; top: 0; z-index: 1; border-bottom: 1px solid #e5e7eb; }
   .invest-full { padding-left: 1.5rem; padding-right: 1.5rem; }
 }
 
-/* Investment: คอลัมน์ปีเท่ากัน + ซ้ายกว้างขึ้น */
+/* Investment: คอลัมน์ปีเท่ากัน + ซ้ายกว้างขึ้น + อ่านง่ายขึ้น */
 .year-col { width: 120px; min-width: 120px; text-align: right; }
-th:first-child, td:first-child { min-width: 320px; }
+th:first-child, td:first-child { min-width: 340px; }   /* ให้กว้างขึ้นอีกนิด */
+tbody tr td:first-child { padding-left: 1rem; }        /* sub-rows อ่านง่าย */
