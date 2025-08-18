@@ -349,11 +349,21 @@ function CompareTable({ banks, onOpenSchedule }) {
       });
 
       const payoffMonths = schedule.rows.length;
+
       const first36 = schedule.rows.slice(0, 36);
+      const first60 = schedule.rows.slice(0, 60);
+
       const int3y = first36.reduce((s, r) => s + r.interest, 0);
       const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0);
+
+      const int5y = first60.reduce((s, r) => s + r.interest, 0);
+      const prepay5y = first60.reduce((s, r) => s + (r.extraPrepay || 0), 0);
+
       const other = sumOtherCosts(b.otherCosts);
+
       const total3y = int3y + other; // “รวม 3 ปี” = ดอกเบี้ย 3 ปี + ค่าใช้จ่าย (ไม่รวมยอดโปะ)
+      const total5y = int5y + other; // “รวม 5 ปี” = ดอกเบี้ย 5 ปี + ค่าใช้จ่าย (ไม่รวมยอดโปะ)
+
       const estMonthly = first36[0]?.payment || 0;
 
       return {
@@ -363,17 +373,25 @@ function CompareTable({ banks, onOpenSchedule }) {
         monthly: estMonthly,
         prepay3y,
         interest3y: int3y,
-        otherCosts: other,
         total3y,
+        prepay5y,
+        interest5y: int5y,
+        total5y,
         after3yRate: b.rateAfter,
         payoffMonths,
         totalInterestAll: schedule.totalInterest,
+        otherCosts: other,
       };
     });
   }, [banks]);
 
   const currentBase = rows[0]?.total3y ?? null;
-  const best = rows.length ? Math.min(...rows.map((r) => r.total3y)) : null;
+
+  const best3 = rows.length ? Math.min(...rows.map((r) => r.total3y)) : null;
+  const worst3 = rows.length ? Math.max(...rows.map((r) => r.total3y)) : null;
+
+  const best5 = rows.length ? Math.min(...rows.map((r) => r.total5y)) : null;
+  const worst5 = rows.length ? Math.max(...rows.map((r) => r.total5y)) : null;
 
   const fmtDelta = (r) => {
     if (r.index === 0 || currentBase === null) return { text: "–", cls: "" };
@@ -390,12 +408,19 @@ function CompareTable({ banks, onOpenSchedule }) {
           <tr>
             <Th>ธนาคาร</Th>
             <Th className="text-right">ค่างวด/เดือน (ประมาณ)</Th>
+            {/* 3 ปี */}
             <Th className="text-right">โปะรวม 3 ปี</Th>
             <Th className="text-right">ดอกเบี้ยรวม 3 ปี</Th>
             <Th className="text-right">ค่าใช้จ่ายอื่น ๆ</Th>
             <Th className="text-right">รวม 3 ปี</Th>
             <Th className="text-right">เทียบธนาคารปัจจุบัน</Th>
+            {/* หลัง 3 ปี */}
             <Th className="text-center">ดอกเบี้ยหลัง 3 ปี</Th>
+            {/* 5 ปี */}
+            <Th className="text-right">โปะรวม 5 ปี</Th>
+            <Th className="text-right">ดอกเบี้ยรวม 5 ปี</Th>
+            <Th className="text-right">รวม 5 ปี</Th>
+            {/* อื่น ๆ */}
             <Th className="text-right">จำนวนงวดที่เหลือ</Th>
             <Th className="text-right">ดอกเบี้ยรวมทั้งสัญญา</Th>
             <Th className="text-center">ตารางผ่อน</Th>
@@ -404,20 +429,29 @@ function CompareTable({ banks, onOpenSchedule }) {
         <tbody>
           {rows.map((r) => {
             const d = fmtDelta(r);
+            const cls3 = r.total3y === best3 ? "cell-min" : r.total3y === worst3 ? "cell-max" : "";
+            const cls5 = r.total5y === best5 ? "cell-min" : r.total5y === worst5 ? "cell-max" : "";
             return (
               <tr key={r.id}>
                 <Td>{r.name}</Td>
                 <Td className="text-right font-medium mono">{fmtMoney(r.monthly)}</Td>
+
                 <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
                 <Td className="text-right font-semibold mono">
-                  <span className={r.total3y === best ? "badge-best" : ""}>
-                    {fmtMoney(r.total3y)}
-                  </span>
+                  <span className={cls3}>{fmtMoney(r.total3y)}</span>
                 </Td>
                 <Td className={`text-right ${d.cls}`}>{d.text}</Td>
+
                 <Td className="text-center mono">{fmtRate(r.after3yRate)}%</Td>
+
+                <Td className="text-right mono">{fmtMoney(r.prepay5y)}</Td>
+                <Td className="text-right mono">{fmtMoney(r.interest5y)}</Td>
+                <Td className="text-right font-semibold mono">
+                  <span className={cls5}>{fmtMoney(r.total5y)}</span>
+                </Td>
+
                 <Td className="text-right mono">{formatTerm(r.payoffMonths)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
                 <Td className="text-center">
@@ -589,6 +623,118 @@ function ScheduleView({ bank }) {
   );
 }
 
+/* ========== Investment View (ปีละ) ========== */
+/* แสดงผลรวม “ดอกเบี้ยต่อปี” และ “โปะรวมต่อปี” ของแต่ละธนาคาร
+   - แถวแรกคือชื่อธนาคาร (auto-width เท่ากับข้อความ)
+   - คอลัมน์ปีมีความกว้างเท่ากัน (.year-col)
+   - มีปุ่ม Export CSV
+   - Freeze header (ใช้ thead sticky เดิม)
+   - มุมมองเต็มหน้าจอ (ลดขอบซ้ายขวา) */
+function InvestmentView({ banks }) {
+  const data = useMemo(() => {
+    return banks.map((b) => {
+      const termMonths = Math.round(b.termYears * 12);
+      const schedule = buildSchedule({
+        principal: b.principal,
+        termMonths,
+        rateSchedule: [
+          { months: 12, rateYear: b.rate1 },
+          { months: 12, rateYear: b.rate2 },
+          { months: 12, rateYear: b.rate3 },
+          { months: Math.max(0, termMonths - 36), rateYear: b.rateAfter },
+        ],
+        monthlyPaymentOverride: b.monthlyOverride,
+        prepayPct: b.prepayPct || 0,
+      });
+
+      const years = Math.ceil(schedule.rows.length / 12);
+      const perYear = [];
+      for (let y = 0; y < years; y++) {
+        const slice = schedule.rows.slice(y * 12, y * 12 + 12);
+        const intY = slice.reduce((s, r) => s + r.interest, 0);
+        const preY = slice.reduce((s, r) => s + r.extraPrepay, 0);
+        perYear.push({ interest: intY, prepay: preY });
+      }
+      return {
+        name: b.name,
+        years: perYear, // [{interest, prepay}, ...]
+      };
+    });
+  }, [banks]);
+
+  const maxYears = Math.max(0, ...data.map((d) => d.years.length));
+
+  const exportCSV = () => {
+    const header = ["ธนาคาร", ...Array.from({ length: maxYears }, (_, i) => `ปีที่ ${i + 1} (ดบ.)`), "รวมดอกเบี้ย", ...Array.from({ length: maxYears }, (_, i) => `ปีที่ ${i + 1} (โปะ)`), "รวมโปะ"].join(",");
+    const rows = data.map(d => {
+      const ints = Array.from({ length: maxYears }, (_, i) => fmtMoney(d.years[i]?.interest || 0));
+      const pres = Array.from({ length: maxYears }, (_, i) => fmtMoney(d.years[i]?.prepay || 0));
+      const sumI = fmtMoney(d.years.reduce((s, y) => s + y.interest, 0));
+      const sumP = fmtMoney(d.years.reduce((s, y) => s + y.prepay, 0));
+      return [d.name, ...ints, sumI, ...pres, sumP].join(",");
+    }).join("\r\n");
+    const csv = "\uFEFF" + header + "\r\n" + rows;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "investment_yearly_view.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-semibold">มุมมองลงทุน (สรุปปีละ)</div>
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={exportCSV}>Export CSV</button>
+        </div>
+      </div>
+
+      <div className="table-wrap" style={{ maxHeight: "75vh" }}>
+        <table className="text-sm">
+          <thead>
+            <tr>
+              <Th>ธนาคาร</Th>
+              {Array.from({ length: maxYears }, (_, i) => (
+                <Th key={i} className="text-right year-col">ปีที่ {i + 1} (ดอกเบี้ย)</Th>
+              ))}
+              <Th className="text-right">รวมดอกเบี้ย</Th>
+              {Array.from({ length: maxYears }, (_, i) => (
+                <Th key={`p-${i}`} className="text-right year-col">ปีที่ {i + 1} (โปะ)</Th>
+              ))}
+              <Th className="text-right">รวมโปะ</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => {
+              const sumI = d.years.reduce((s, y) => s + y.interest, 0);
+              const sumP = d.years.reduce((s, y) => s + y.prepay, 0);
+              return (
+                <tr key={d.name}>
+                  <Td className="whitespace-nowrap">{d.name}</Td>
+                  {Array.from({ length: maxYears }, (_, i) => (
+                    <Td key={i} className="text-right mono year-col">{fmtMoney(d.years[i]?.interest || 0)}</Td>
+                  ))}
+                  <Td className="text-right mono font-semibold">{fmtMoney(sumI)}</Td>
+                  {Array.from({ length: maxYears }, (_, i) => (
+                    <Td key={`p-${i}`} className="text-right mono year-col">{fmtMoney(d.years[i]?.prepay || 0)}</Td>
+                  ))}
+                  <Td className="text-right mono font-semibold">{fmtMoney(sumP)}</Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-xs text-gray-500">
+        หมายเหตุ: “โปะ” คือเงินที่จ่ายเพิ่มต่องวดตามเปอร์เซ็นต์ที่ตั้งไว้ และถูกนำไปตัดเงินต้นทันที
+      </div>
+    </div>
+  );
+}
+
 /* ========== CSV Parser (รองรับเครื่องหมายคำพูด) ========== */
 function parseCSV(text) {
   const rows = [];
@@ -732,12 +878,9 @@ function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const goHome = () => {
-    window.location.hash = "#/";
-  };
-  const openSchedule = (i) => {
-    window.location.hash = `#/schedule/${i}`;
-  };
+  const goHome = () => { window.location.hash = "#/"; };
+  const openSchedule = (i) => { window.location.hash = `#/schedule/${i}`; };
+  const openInvest = () => { window.location.hash = "#/invest"; };
 
   const addBank = () =>
     setBanks([
@@ -792,6 +935,7 @@ function App() {
   };
 
   const isSchedule = route.startsWith("#/schedule/");
+  const isInvest = route === "#/invest";
   let scheduleIndex = null;
   if (isSchedule) {
     const parts = route.split("/");
@@ -831,7 +975,7 @@ function App() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6">
+    <div className={`mx-auto p-4 md:p-6 ${isInvest ? "app-wide" : "max-w-6xl"}`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-2xl bg-gray-900 text-white grid place-items-center">
@@ -844,36 +988,52 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv"
-            style={{ display: "none" }}
-            onChange={onFileChange}
-          />
-          <button
-            className="btn-secondary"
-            onClick={downloadTemplateCSV}
-            title="ดาวน์โหลดไฟล์ตัวอย่าง CSV"
-          >
-            ดาวน์โหลดเทมเพลต
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={onClickImport}
-            title="นำเข้าข้อมูลธนาคารจาก CSV"
-          >
-            นำเข้า CSV
-          </button>
-          <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">
-            ＋ เพิ่มธนาคาร
-          </button>
-        </div>
+
+        {/* ซ่อนปุ่มมุมขวาบนเมื่ออยู่หน้า "ดูงวด" ตามข้อกำหนด */}
+        {!isSchedule && (
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary"
+              onClick={openInvest}
+              title="มุมมองลงทุน (ปีละ)"
+            >
+              มุมมองลงทุน (ปีละ)
+            </button>
+
+            {!isInvest && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv"
+                  style={{ display: "none" }}
+                  onChange={onFileChange}
+                />
+                <button
+                  className="btn-secondary"
+                  onClick={downloadTemplateCSV}
+                  title="ดาวน์โหลดไฟล์ตัวอย่าง CSV"
+                >
+                  ดาวน์โหลดเทมเพลต
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={onClickImport}
+                  title="นำเข้าข้อมูลธนาคารจาก CSV"
+                >
+                  นำเข้า CSV
+                </button>
+                <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">
+                  ＋ เพิ่มธนาคาร
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* หน้าเปรียบเทียบหลัก */}
-      {!isSchedule && (
+      {!isSchedule && !isInvest && (
         <div className="space-y-6">
           <div className="space-y-4">
             {banks.map((b, i) => (
@@ -890,14 +1050,25 @@ function App() {
 
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
+              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี/5 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
             </div>
             <CompareTable banks={banks} onOpenSchedule={openSchedule} />
             <div className="text-xs text-gray-500">
               หมายเหตุ: ระบบจะคำนวณค่างวดใหม่เมื่ออัตราดอกเบี้ยเปลี่ยนทุกช่วง เพื่อคงอายุสัญญาเดิม •
-              “โปะเพิ่ม (%)” จะถูกคิดเป็นเปอร์เซ็นต์ของค่างวดแต่ละงวด แล้วนำไปตัดเงินต้นทันที
+              “โปะเพิ่ม (%)” จะถูกคิดเป็นเปอร์เซ็นต์ของค่างวดแต่ละงวด แล้วนำไปตัดเงินต้นทันที •
+              “รวม 3 ปี/5 ปี” = ดอกเบี้ยช่วงนั้น + ค่าใช้จ่ายอื่น (ไม่รวมยอดโปะ)
             </div>
           </div>
+        </div>
+      )}
+
+      {/* มุมมองลงทุนแบบเต็มหน้าจอ */}
+      {isInvest && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <button className="btn-secondary" onClick={goHome}>← กลับ</button>
+          </div>
+          <InvestmentView banks={banks} />
         </div>
       )}
 
