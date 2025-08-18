@@ -14,23 +14,23 @@ body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubu
 .ipt::-webkit-outer-spin-button,.ipt::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 .ipt:focus{ box-shadow:0 0 0 3px rgba(209,213,219,.6); border-color:#cbd5e1; }
 .ipt-num{text-align:right;}
-.ipt-sm{ font-size:.875rem; padding:.35rem .6rem; border-radius:10px; min-height:2.1rem; }
+.ipt-sm{ font-size:.875rem; padding:.35rem .9rem; border-radius:9999px; min-height:2.1rem; }
 
 .mono{ font-feature-settings:'tnum' 1,'lnum' 1; font-variant-numeric: tabular-nums; }
 
-/* Buttons */
+/* Buttons = แคปซูล */
 .btn,.btn-secondary{
   display:inline-flex; align-items:center; justify-content:center;
-  padding:.48rem .85rem; line-height:1.25; min-height:2.2rem;
-  white-space:nowrap; border-radius:10px; max-width:100%;
+  padding:.48rem 1rem; line-height:1.25; min-height:2.2rem;
+  white-space:nowrap; border-radius:9999px; max-width:100%;
 }
 .btn{ background:#111827; color:#fff; border:0; cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn:hover{ background:#1f2937 } .btn:active{ background:#374151; transform:translateY(1px); }
 .btn-secondary{ background:#fff; color:#1f2937; border:1px solid var(--gray-300); cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn-secondary:hover{ background:#f9fafb } .btn-secondary:active{ background:#f3f4f6; transform:translateY(1px); }
 
-/* Icon button */
-.icon-btn{ width:36px; height:36px; padding:0; display:inline-grid; place-items:center; border-radius:10px; }
+/* Icon button (แคปซูล) */
+.icon-btn{ width:38px; height:38px; padding:0; display:inline-grid; place-items:center; border-radius:9999px; }
 .icon-btn svg{ width:18px; height:18px; }
 
 /* Tables */
@@ -49,7 +49,7 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .focus-layer{ position:fixed; inset:0; z-index:60; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; padding:1rem; }
 .focus-box{ width:min(1400px,98vw); height:min(90vh,96vh); background:#fff; border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column; padding:1rem; }
 .focus-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; }
-.focus-close{ border:1px solid var(--gray-300); background:#fff; border-radius:10px; padding:.35rem .7rem; cursor:pointer; }
+.focus-close{ border:1px solid var(--gray-300); background:#fff; border-radius:9999px; padding:.35rem .9rem; cursor:pointer; }
 .focus-body{ flex:1; min-height:0; }
 
 .chart-modal{ position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:1rem; }
@@ -61,27 +61,15 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 /* Cap alert */
 .cap-alert{ background:var(--amber-50); color:var(--amber-600); border-radius:6px; padding:.1rem .25rem; font-weight:600; }
 
-/* Compact toolbar */
-.toolbar{ display:flex; flex-wrap:wrap; gap:.6rem .8rem; align-items:center; }
-.toolbar .group{ display:inline-flex; align-items:center; gap:.4rem; }
-
-/* Dropdown */
-.dropdown{ position:relative; }
-.dropdown-menu{
-  position:absolute; top:100%; right:0; z-index:50; margin-top:.35rem;
-  background:#fff; border:1px solid var(--gray-200); border-radius:10px;
-  box-shadow:0 10px 24px rgba(0,0,0,.12);
-  padding:.5rem; min-width:260px; max-height:320px; overflow:auto;
-}
-.dropdown-menu .item{ display:flex; align-items:center; gap:.5rem; padding:.35rem .25rem; border-radius:8px; }
-.dropdown-menu .item:hover{ background:var(--gray-50); }
-.dropdown-footer{ padding-top:.25rem; font-size:.75rem; color:#6b7280; }
-
-/* Investment page: center layout */
-.invest-wrap{ width:min(1200px,96vw); margin:0 auto; }
-.invest-head{ text-align:center; font-weight:700; font-size:1.1rem; }
+/* Toolbar มุมมองลงทุน = บรรทัดเดียว เลื่อนแนวนอนได้ */
 .controls-card{
   background:#fff; border:1px solid var(--gray-200); border-radius:12px;
-  padding:.75rem 1rem; display:flex; flex-wrap:wrap; justify-content:center; align-items:center;
-  gap:.6rem 1rem;
+  padding:.6rem .8rem;
+  display:flex; align-items:center; justify-content:flex-start;
+  gap:.6rem; white-space:nowrap; overflow:auto; flex-wrap:nowrap;
 }
+.controls-card .group{ display:inline-flex; align-items:center; gap:.4rem; }
+
+/* Investment page: เต็มกว้าง ไม่เว้นขอบซ้ายขวา */
+.invest-wrap{ width:100%; margin:0; }
+.invest-head{ font-weight:700; font-size:1.05rem; padding-left:.25rem; }
