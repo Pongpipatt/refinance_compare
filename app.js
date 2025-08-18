@@ -12,8 +12,15 @@ function pmt(r, n, P) {
 }
 const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/* ตารางคำนวณ */
-function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOverride = null, prepayPct = 0 }) {
+/* ตารางคำนวณ (เพิ่ม capPerMonth) */
+function buildSchedule({
+  principal,
+  termMonths,
+  rateSchedule,
+  monthlyPaymentOverride = null,
+  prepayPct = 0,
+  capPerMonth = null, // ใหม่: เพดานจ่ายรวม/เดือน (ค่างวด+โปะ)
+}) {
   let balance = principal;
   let remaining = termMonths;
   const rows = [];
@@ -31,12 +38,36 @@ function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOver
       let principalPay = basePay - interest;
       if (principalPay < 0) principalPay = 0;
 
-      const extra = Math.max(0, basePay * (prepayPct / 100));
-      let principalAll = principalPay + extra;
+      // เดิม: extra = basePay * (prepayPct/100)
+      const desiredExtra = Math.max(0, basePay * (prepayPct / 100));
+      let allowedExtra = desiredExtra;
+      let extraCapped = false;
+
+      if (capPerMonth && capPerMonth > 0) {
+        const room = Math.max(0, capPerMonth - basePay); // เหลืองบหลังหักค่างวด
+        if (desiredExtra > room) {
+          allowedExtra = room;
+          extraCapped = true;
+        }
+      }
+
+      let principalAll = principalPay + allowedExtra;
       if (principalAll > balance || remaining === 1) principalAll = balance;
 
       const endBalance = Math.max(0, balance - principalAll);
-      rows.push({ index: mIndex + 1, rate: rateSchedule[seg].rateYear, payment: basePay, extraPrepay: extra, principal: principalPay, principalTotal: principalAll, interest, endBalance });
+
+      rows.push({
+        index: mIndex + 1,
+        rate: rateSchedule[seg].rateYear,
+        payment: basePay,
+        extraPrepay: allowedExtra,
+        principal: principalPay,
+        principalTotal: principalAll,
+        interest,
+        endBalance,
+        extraCapped, // ธงบอกว่างวดนี้ถูกจำกัดด้วยเพดาน
+      });
+
       balance = endBalance;
       remaining -= 1;
       mIndex += 1;
@@ -242,7 +273,7 @@ function CompareTable({ banks, onOpenSchedule, onToggleFocus, showFocus }) {
   );
 }
 
-/* ========== Schedule View (ลบปุ่มไปมุมมองลงทุน + ปรับปุ่มเป็น Export) ========== */
+/* ========== Schedule View ========== */
 const TH_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=new Date(y, m-1+add, 1); const mm=String(d.getMonth()+1).padStart(2,"0"); return `${d.getFullYear()}-${mm}`; }
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
@@ -317,22 +348,22 @@ function ScheduleView({ bank }) {
   );
 }
 
-/* ========== Investment View (เพิ่ม sub row + กราฟ Base/โปะ/ลงทุน + เลือกธนาคาร + hover tooltip + แกน Y ถูกทิศ) ========== */
+/* ========== Investment View (เพดาน/เดือนบังคับใช้จริง + ไฮไลท์เหลืองเมื่อ "ถูกจำกัดด้วยเพดาน") ========== */
 function InvestmentView({ banks }) {
-  // ค่าปรับแต่ง
-  const [overridePrepayPct, setOverridePrepayPct] = useState(""); // % ลงทุน (โปะ)
-  const [monthlyCap, setMonthlyCap] = useState("");               // เพดาน/เดือน (เตือน)
+  const [overridePrepayPct, setOverridePrepayPct] = useState(""); // % ลงทุน/โปะ
+  const [monthlyCap, setMonthlyCap] = useState("");               // เพดาน/เดือน
   const [expectReturn, setExpectReturn] = useState("7");           // % ผลตอบแทนคาดหวัง/ปี
   const [showChart, setShowChart] = useState(false);
   const [chartBankIndex, setChartBankIndex] = useState(0);
   const canvasRef = useRef(null);
 
-  // คำนวณข้อมูลต่อปี + สะสม
   const data = useMemo(() => {
     return banks.map((b) => {
       const termMonths = Math.round(b.termYears * 12);
       const pctUse = overridePrepayPct === "" ? (b.prepayPct || 0) : Number(overridePrepayPct || 0);
+      const cap = Number(monthlyCap || 0);
 
+      // ตาราง “มีโปะ/ลงทุน” (พร้อมจำกัดเพดาน)
       const schedWithPrepay = buildSchedule({
         principal: b.principal, termMonths,
         rateSchedule: [
@@ -343,8 +374,10 @@ function InvestmentView({ banks }) {
         ],
         monthlyPaymentOverride: b.monthlyOverride,
         prepayPct: pctUse,
+        capPerMonth: cap > 0 ? cap : null,
       });
 
+      // ตาราง “Base ไม่โปะ”
       const schedBase = buildSchedule({
         principal: b.principal, termMonths,
         rateSchedule: [
@@ -363,7 +396,6 @@ function InvestmentView({ banks }) {
       let cumInterestBase = 0;
       let cumInvest = 0;
       const rYear = (Number(expectReturn || 0) / 100);
-      const cap = Number(monthlyCap || 0);
 
       for (let y = 0; y < years; y++) {
         const sliceWith = schedWithPrepay.rows.slice(y * 12, y * 12 + 12);
@@ -372,13 +404,13 @@ function InvestmentView({ banks }) {
         const interestWith = sliceWith.reduce((s, row) => s + row.interest, 0);
         const interestBase = sliceBase.reduce((s, row) => s + row.interest, 0);
         const investThisYear = sliceWith.reduce((s, row) => s + row.extraPrepay, 0);
+        const hasCap = sliceWith.some(row => row.extraCapped);
 
         cumInterestWith += interestWith;
         cumInterestBase += interestBase;
         cumInvest += investThisYear;
 
-        const anyCapExceed = cap > 0 ? sliceWith.some(row => (row.payment + row.extraPrepay) > cap + 1e-6) : false;
-
+        // เงินลงทุนเติบโต (คิดแบบปลายปี)
         let grown = 0;
         for (let k = 0; k <= y; k++) {
           const invK = schedWithPrepay.rows.slice(k * 12, k * 12 + 12).reduce((s, r) => s + r.extraPrepay, 0);
@@ -392,16 +424,13 @@ function InvestmentView({ banks }) {
           endBalYear: sliceWith.length ? sliceWith[sliceWith.length - 1].endBalance : 0,
           cumInvest,
           investGrown: grown,
-          capExceed: anyCapExceed,
+          capExceed: hasCap, // ใช้คลาสเดิมในการไฮไลท์ = ถูกจำกัดด้วยเพดาน
           savedInterestYear: Math.max(0, interestBase - interestWith),
         });
       }
 
       let cumSaved = 0;
-      const chartBase = [];
-      const chartPrepay = [];
-      const chartInvest = [];
-
+      const chartBase = [], chartPrepay = [], chartInvest = [];
       perYear.forEach((y) => {
         cumSaved += y.savedInterestYear;
         chartBase.push(0);
@@ -418,7 +447,7 @@ function InvestmentView({ banks }) {
   // Export CSV
   const exportCSV = () => {
     const header = [
-      "ธนาคาร","ปี","ดอกเบี้ยสะสม(มีโปะ)","เงินต้นคงเหลือปลายปี","เงินลงทุนปีนี้(เท่ากับยอดโปะ)","เงินลงทุนสะสม","เงินลงทุนที่เติบโต(สิ้นปี)"
+      "ธนาคาร","ปี","ดอกเบี้ยสะสม(มีโปะ)","เงินต้นคงเหลือปลายปี","เงินลงทุนปีนี้(เท่ากับยอดโปะหลังจำกัด)","เงินลงทุนสะสม","เงินลงทุนที่เติบโต(สิ้นปี)"
     ].join(",");
     const body = data.map(d =>
       d.years.map(y =>
@@ -431,7 +460,14 @@ function InvestmentView({ banks }) {
     a.href=url; a.download="investment_view_cumulative.csv"; a.click(); URL.revokeObjectURL(url);
   };
 
-  // ===== วาดกราฟ + Hover Tooltip =====
+  /* ===== กราฟ (แกน Y ถูกทิศ + hover tooltip) ===== */
+  const [chartDataKey, setChartDataKey] = useState(0); // trigger redraw on resize
+  useEffect(() => {
+    const onResize = () => setChartDataKey(k => k + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     if (!showChart) return;
     const canvas = canvasRef.current;
@@ -455,11 +491,10 @@ function InvestmentView({ banks }) {
       const pad = 40 * dpi;
       const plotW = W - pad*2, plotH = H - pad*2;
 
-      // bg
       ctx.clearRect(0,0,W,H);
       ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,W,H);
 
-      // grid + Y labels (บน = ค่าสูงสุด, ล่าง = 0)
+      // grid + Y labels (บน = สูงสุด, ล่าง = 0)
       ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1;
       ctx.fillStyle="#6b7280"; ctx.font = `${12*dpi}px sans-serif`;
       for (let i=0;i<=5;i++){
@@ -475,7 +510,6 @@ function InvestmentView({ banks }) {
         ctx.fillText(`ปี ${i+1}`, x-10*dpi, H - 8*dpi);
       }
 
-      // helper mapping
       const xOf = (i, len) => pad + plotW * (i/(Math.max(1,len-1)));
       const yOf = (v) => pad + plotH * (1 - (v / maxY));
 
@@ -501,15 +535,13 @@ function InvestmentView({ banks }) {
         ctx.fillText(lb, W - pad - 224*dpi, y0 + 10*dpi);
       });
 
-      // hover
+      // hover tooltip
       if (hoverI !== null) {
         const xh = xOf(hoverI, series[0].length);
-        // crosshair
         ctx.strokeStyle = "#9ca3af"; ctx.setLineDash([4*dpi,4*dpi]);
         ctx.beginPath(); ctx.moveTo(xh, pad); ctx.lineTo(xh, H - pad); ctx.stroke();
         ctx.setLineDash([]);
 
-        // bullets
         const vals = series.map(arr => arr[hoverI] ?? 0);
         vals.forEach((v, si) => {
           ctx.beginPath();
@@ -518,7 +550,6 @@ function InvestmentView({ banks }) {
           ctx.fill();
         });
 
-        // tooltip box
         const tipLines = [
           `ปี ${hoverI+1}`,
           `${labels[1]}: ${fmtMoney(vals[1])} บ.`,
@@ -535,11 +566,10 @@ function InvestmentView({ banks }) {
 
     draw(null);
 
-    // hover handlers
     const onMove = (e) => {
       const rect = canvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) * dpi;
-      const W = canvas.width, H = canvas.height;
+      const W = canvas.width;
       const pad = 40 * dpi, plotW = W - pad*2;
       const len = series[0].length || 1;
       const t = Math.max(0, Math.min(1, (x - pad) / Math.max(1, plotW)));
@@ -554,7 +584,7 @@ function InvestmentView({ banks }) {
       canvas.removeEventListener("mousemove", onMove);
       canvas.removeEventListener("mouseleave", onLeave);
     };
-  }, [showChart, data, chartBankIndex]);
+  }, [showChart, data, chartBankIndex, chartDataKey]);
 
   return (
     <div className="space-y-3">
@@ -568,7 +598,7 @@ function InvestmentView({ banks }) {
           <label className="text-sm text-gray-600">ลงทุนเพิ่ม (%)</label>
           <input className="ipt ipt-num mono" style={{width:90}} placeholder="เช่น 5" defaultValue={overridePrepayPct} onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}/>
           <label className="text-sm text-gray-600">เพดาน/เดือน (บาท)</label>
-          <input className="ipt ipt-num mono" style={{width:140}} placeholder="เช่น 18000" defaultValue={monthlyCap} onBlur={(e)=> setMonthlyCap(e.target.value.trim())}/>
+          <input className="ipt ipt-num mono" style={{width:140}} placeholder="เช่น 16000" defaultValue={monthlyCap} onBlur={(e)=> setMonthlyCap(e.target.value.trim())}/>
           <label className="text-sm text-gray-600">คาดหวังผลตอบแทน/ปี (%)</label>
           <input className="ipt ipt-num mono" style={{width:90}} placeholder="5–8" defaultValue={expectReturn} onBlur={(e)=> setExpectReturn(e.target.value.trim())}/>
           <button className="btn-secondary" onClick={exportCSV}>Export CSV</button>
@@ -590,6 +620,7 @@ function InvestmentView({ banks }) {
             {data.map((d, di) => (
               <React.Fragment key={d.name}>
                 <tr className="bank-divider"><Td colSpan={maxYears + 1}>{d.name}</Td></tr>
+
                 <tr>
                   <Td className="sub-label">ดอกเบี้ยรวมสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
@@ -598,24 +629,28 @@ function InvestmentView({ banks }) {
                     </Td>
                   ))}
                 </tr>
+
                 <tr>
                   <Td className="sub-label">เงินต้นคงเหลือปลายปี</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`bal-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.endBalYear || 0)}</Td>
                   ))}
                 </tr>
+
                 <tr>
                   <Td className="sub-label">เงินลงทุนสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`cumInv-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInvest || 0)}</Td>
                   ))}
                 </tr>
+
                 <tr>
                   <Td className="sub-label">เงินลงทุนที่เติบโต (สิ้นปี)</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`grown-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investGrown || 0)}</Td>
                   ))}
                 </tr>
+
                 <tr><Td colSpan={maxYears + 1} style={{height:6}}></Td></tr>
               </React.Fragment>
             ))}
@@ -624,8 +659,8 @@ function InvestmentView({ banks }) {
       </div>
 
       <div className="text-xs text-gray-500">
-        แถว 1 = ดอกเบี้ยรวมสะสม (กรณีมีโปะ) • แถว 2 = เงินต้นคงเหลือปลายปี • แถว 3 = เงินลงทุนสะสม (รวมยอดโปะถึงสิ้นปี) • แถว 4 = มูลค่าเงินลงทุนที่เติบโต (ใช้อัตราคาดหวัง)
-        <br/>มีไฮไลท์สีเหลืองเมื่อค่างวด+โปะ **เกินเพดาน/เดือน** ที่กำหนด
+        * ไฮไลท์เหลือง = ปีนั้นมีงวดที่ “ยอดโปะ/ลงทุนถูกจำกัดด้วยเพดานต่อเดือน” (ค่างวด + โปะ ≤ เพดาน)  
+        แถว 1 = ดอกเบี้ยรวมสะสม • แถว 2 = เงินต้นคงเหลือปลายปี • แถว 3 = เงินลงทุนสะสม (หลังจำกัดเพดาน) • แถว 4 = มูลค่าเงินลงทุนที่เติบโต
       </div>
 
       {/* Chart modal */}
@@ -637,7 +672,7 @@ function InvestmentView({ banks }) {
               <button className="focus-close" onClick={()=>setShowChart(false)}>✕ ปิด</button>
             </div>
             <div className="chart-body">
-              <canvas ref={canvasRef}></canvas>
+              <canvas key={chartDataKey} ref={canvasRef}></canvas>
             </div>
           </div>
         </div>
@@ -726,7 +761,6 @@ function App() {
           </div>
         </div>
 
-        {/* ซ่อนปุ่มมุมขวาบนเมื่ออยู่หน้า "ดูงวด" */}
         {!isSchedule && (
           <div className="flex items-center gap-2">
             <button className="btn-secondary" onClick={openInvest} title="มุมมองลงทุน (ปีละ)">มุมมองลงทุน (ปีละ)</button>
@@ -763,7 +797,7 @@ function App() {
         </div>
       )}
 
-      {/* มุมมองลงทุนแบบเต็มหน้าจอ */}
+      {/* มุมมองลงทุน */}
       {isInvest && (
         <div className="space-y-4">
           <div className="flex items-center gap-2"><button className="btn-secondary" onClick={goHome}>← กลับ</button></div>
@@ -782,7 +816,7 @@ function App() {
   );
 }
 
-/* -------- CSV Parser เดิม -------- */
+/* -------- CSV Parser -------- */
 function parseCSV(text){
   const rows=[]; let i=0, field="", row=[], inQuotes=false;
   while(i<text.length){ const c=text[i];
