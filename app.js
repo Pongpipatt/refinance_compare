@@ -317,7 +317,7 @@ function ScheduleView({ bank }) {
   );
 }
 
-/* ========== Investment View (เพิ่ม sub row + กราฟ Base/โปะ/ลงทุน + เลือกธนาคาร) ========== */
+/* ========== Investment View (เพิ่ม sub row + กราฟ Base/โปะ/ลงทุน + เลือกธนาคาร + hover tooltip + แกน Y ถูกทิศ) ========== */
 function InvestmentView({ banks }) {
   // ค่าปรับแต่ง
   const [overridePrepayPct, setOverridePrepayPct] = useState(""); // % ลงทุน (โปะ)
@@ -327,13 +327,12 @@ function InvestmentView({ banks }) {
   const [chartBankIndex, setChartBankIndex] = useState(0);
   const canvasRef = useRef(null);
 
-  // คำนวณข้อมูลต่อปี + สะสม ทั้งกรณี Base (ไม่โปะ) และกรณีมีโปะ/นำไปลงทุน
+  // คำนวณข้อมูลต่อปี + สะสม
   const data = useMemo(() => {
     return banks.map((b) => {
       const termMonths = Math.round(b.termYears * 12);
       const pctUse = overridePrepayPct === "" ? (b.prepayPct || 0) : Number(overridePrepayPct || 0);
 
-      // ตาราง “มีโปะ”
       const schedWithPrepay = buildSchedule({
         principal: b.principal, termMonths,
         rateSchedule: [
@@ -346,7 +345,6 @@ function InvestmentView({ banks }) {
         prepayPct: pctUse,
       });
 
-      // ตาราง “Base ไม่โปะ”
       const schedBase = buildSchedule({
         principal: b.principal, termMonths,
         rateSchedule: [
@@ -373,16 +371,14 @@ function InvestmentView({ banks }) {
 
         const interestWith = sliceWith.reduce((s, row) => s + row.interest, 0);
         const interestBase = sliceBase.reduce((s, row) => s + row.interest, 0);
-        const investThisYear = sliceWith.reduce((s, row) => s + row.extraPrepay, 0); // เงินที่ “จะโปะ” = เงินไปลงทุนแทนได้
+        const investThisYear = sliceWith.reduce((s, row) => s + row.extraPrepay, 0);
 
         cumInterestWith += interestWith;
         cumInterestBase += interestBase;
         cumInvest += investThisYear;
 
-        // เช็ค cap เตือน ถ้ายอดจ่ายต่อเดือน (ค่างวด+โปะ) เกินเพดาน
         const anyCapExceed = cap > 0 ? sliceWith.some(row => (row.payment + row.extraPrepay) > cap + 1e-6) : false;
 
-        // เงินลงทุนเติบโตแบบคิดเป็นก้อน “ปลายปี” (conservative)
         let grown = 0;
         for (let k = 0; k <= y; k++) {
           const invK = schedWithPrepay.rows.slice(k * 12, k * 12 + 12).reduce((s, r) => s + r.extraPrepay, 0);
@@ -392,24 +388,19 @@ function InvestmentView({ banks }) {
 
         perYear.push({
           yearIndex: y + 1,
-          // ตารางแสดงผลหลัก (sub row)
-          cumInterest: cumInterestWith,                  // ดอกเบี้ยรวมสะสม (กรณีมีโปะ)
+          cumInterest: cumInterestWith,
           endBalYear: sliceWith.length ? sliceWith[sliceWith.length - 1].endBalance : 0,
-          cumInvest,                                     // เงินลงทุนสะสม (ผลรวมยอดโปะ)
-          investGrown: grown,                            // มูลค่าเงินลงทุนที่เติบโต (สิ้นปี)
+          cumInvest,
+          investGrown: grown,
           capExceed: anyCapExceed,
-
-          // สำหรับกราฟ 3 เส้น
-          savedInterestYear: Math.max(0, interestBase - interestWith),  // ดอกเบี้ยที่ “ประหยัด” ได้ในปีนี้
-          // จะใช้สะสมทีหลัง
+          savedInterestYear: Math.max(0, interestBase - interestWith),
         });
       }
 
-      // เตรียม array สำหรับกราฟ 3 เส้น (สะสมตามปี)
       let cumSaved = 0;
-      const chartBase = [];           // เส้นฐาน (0)
-      const chartPrepay = [];         // สะสม “ดอกเบี้ยที่ประหยัดได้”
-      const chartInvest = [];         // มูลค่าเงินลงทุนที่เติบโต
+      const chartBase = [];
+      const chartPrepay = [];
+      const chartInvest = [];
 
       perYear.forEach((y) => {
         cumSaved += y.savedInterestYear;
@@ -424,7 +415,7 @@ function InvestmentView({ banks }) {
 
   const maxYears = Math.max(0, ...data.map((d) => d.years.length));
 
-  // Export CSV (ข้อมูลสะสม + ต่อปี)
+  // Export CSV
   const exportCSV = () => {
     const header = [
       "ธนาคาร","ปี","ดอกเบี้ยสะสม(มีโปะ)","เงินต้นคงเหลือปลายปี","เงินลงทุนปีนี้(เท่ากับยอดโปะ)","เงินลงทุนสะสม","เงินลงทุนที่เติบโต(สิ้นปี)"
@@ -440,65 +431,129 @@ function InvestmentView({ banks }) {
     a.href=url; a.download="investment_view_cumulative.csv"; a.click(); URL.revokeObjectURL(url);
   };
 
-  // วาดกราฟ 3 เส้น: Base (0), Prepay (ดอกเบี้ยประหยัดสะสม), Invest (มูลค่าลงทุนที่เติบโต)
+  // ===== วาดกราฟ + Hover Tooltip =====
   useEffect(() => {
     if (!showChart) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const dpi = window.devicePixelRatio || 1;
-    const W = canvas.clientWidth * dpi;
-    const H = canvas.clientHeight * dpi;
-    canvas.width = W; canvas.height = H;
 
-    // ข้อมูลของธนาคารที่เลือก
     const d = data[chartBankIndex];
     if (!d) return;
     const series = [d.chartSeries.base, d.chartSeries.prepay, d.chartSeries.invest];
     const labels = ["Base (ไม่โปะ)", "โปะโดยตรง — ดอกเบี้ยที่ประหยัดสะสม", "เอาไปลงทุน — มูลค่าลงทุนเติบโต"];
     const colors = ["#6b7280", "#059669", "#2563eb"];
 
-    const allY = series.flat();
-    const maxY = Math.max(1, ...allY);
-    const pad = 40 * dpi;
-    const plotW = W - pad*2, plotH = H - pad*2;
+    function draw(hoverI = null) {
+      const W = canvas.clientWidth * dpi;
+      const H = canvas.clientHeight * dpi;
+      canvas.width = W; canvas.height = H;
 
-    // พื้นหลัง + กริด
-    ctx.clearRect(0,0,W,H);
-    ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,W,H);
-    ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1;
-    for (let i=0;i<=5;i++){
-      const y = pad + plotH*(i/5);
-      ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+      const allY = series.flat();
+      const maxY = Math.max(1, ...allY);
+      const pad = 40 * dpi;
+      const plotW = W - pad*2, plotH = H - pad*2;
+
+      // bg
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,W,H);
+
+      // grid + Y labels (บน = ค่าสูงสุด, ล่าง = 0)
+      ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1;
       ctx.fillStyle="#6b7280"; ctx.font = `${12*dpi}px sans-serif`;
-      const val = maxY*(i/5);
-      ctx.fillText(fmtMoney(val), 6*dpi, y-4*dpi);
-    }
-    ctx.fillStyle="#6b7280"; ctx.font = `${12*dpi}px sans-serif`;
-    const maxYearsLocal = d.years.length;
-    for (let i=0;i<maxYearsLocal;i++){
-      const x = pad + plotW * (i/(Math.max(1,maxYearsLocal-1)));
-      ctx.fillText(`ปี ${i+1}`, x-10*dpi, H - 8*dpi);
-    }
+      for (let i=0;i<=5;i++){
+        const y = pad + plotH*(i/5);
+        ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+        const val = maxY*(1 - i/5);
+        ctx.fillText(fmtMoney(val), 6*dpi, y-4*dpi);
+      }
+      // X labels
+      const maxYearsLocal = d.years.length;
+      for (let i=0;i<maxYearsLocal;i++){
+        const x = pad + plotW * (i/(Math.max(1,maxYearsLocal-1)));
+        ctx.fillText(`ปี ${i+1}`, x-10*dpi, H - 8*dpi);
+      }
 
-    series.forEach((arr, si) => {
-      ctx.beginPath();
-      arr.forEach((v, i) => {
-        const x = pad + plotW * (i/(Math.max(1,arr.length-1)));
-        const y = pad + plotH * (1 - (v / maxY));
-        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      // helper mapping
+      const xOf = (i, len) => pad + plotW * (i/(Math.max(1,len-1)));
+      const yOf = (v) => pad + plotH * (1 - (v / maxY));
+
+      // lines
+      series.forEach((arr, si) => {
+        ctx.beginPath();
+        arr.forEach((v, i) => {
+          const x = xOf(i, arr.length);
+          const y = yOf(v);
+          if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        });
+        ctx.strokeStyle = colors[si % colors.length];
+        ctx.lineWidth = 2*dpi;
+        ctx.stroke();
       });
-      ctx.strokeStyle = colors[si % colors.length];
-      ctx.lineWidth = 2*dpi;
-      ctx.stroke();
 
       // legend
-      const y0 = pad + (si*18*dpi);
-      ctx.fillStyle = colors[si % colors.length];
-      ctx.fillRect(W - pad - 220*dpi, y0, 10*dpi, 10*dpi);
-      ctx.fillStyle = "#111827";
-      ctx.fillText(labels[si], W - pad - 204*dpi, y0 + 10*dpi);
-    });
+      labels.forEach((lb, si) => {
+        const y0 = pad + (si*18*dpi);
+        ctx.fillStyle = colors[si % colors.length];
+        ctx.fillRect(W - pad - 240*dpi, y0, 10*dpi, 10*dpi);
+        ctx.fillStyle = "#111827";
+        ctx.fillText(lb, W - pad - 224*dpi, y0 + 10*dpi);
+      });
+
+      // hover
+      if (hoverI !== null) {
+        const xh = xOf(hoverI, series[0].length);
+        // crosshair
+        ctx.strokeStyle = "#9ca3af"; ctx.setLineDash([4*dpi,4*dpi]);
+        ctx.beginPath(); ctx.moveTo(xh, pad); ctx.lineTo(xh, H - pad); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // bullets
+        const vals = series.map(arr => arr[hoverI] ?? 0);
+        vals.forEach((v, si) => {
+          ctx.beginPath();
+          ctx.arc(xh, yOf(v), 3*dpi, 0, Math.PI*2);
+          ctx.fillStyle = colors[si % colors.length];
+          ctx.fill();
+        });
+
+        // tooltip box
+        const tipLines = [
+          `ปี ${hoverI+1}`,
+          `${labels[1]}: ${fmtMoney(vals[1])} บ.`,
+          `${labels[2]}: ${fmtMoney(vals[2])} บ.`,
+        ];
+        const boxW = 280*dpi, boxH = (tipLines.length*16 + 12)*dpi;
+        const boxX = Math.min(Math.max(pad, xh + 12*dpi), W - pad - boxW);
+        const boxY = pad + 8*dpi;
+        ctx.fillStyle = "rgba(17,24,39,0.9)"; ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.fillStyle = "#ffffff"; ctx.font = `${12*dpi}px sans-serif`;
+        tipLines.forEach((t, i) => ctx.fillText(t, boxX + 10*dpi, boxY + 20*dpi + i*16*dpi));
+      }
+    }
+
+    draw(null);
+
+    // hover handlers
+    const onMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * dpi;
+      const W = canvas.width, H = canvas.height;
+      const pad = 40 * dpi, plotW = W - pad*2;
+      const len = series[0].length || 1;
+      const t = Math.max(0, Math.min(1, (x - pad) / Math.max(1, plotW)));
+      const idx = Math.round(t * (len - 1));
+      draw(idx);
+    };
+    const onLeave = () => draw(null);
+
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    return () => {
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mouseleave", onLeave);
+    };
   }, [showChart, data, chartBankIndex]);
 
   return (
@@ -534,10 +589,7 @@ function InvestmentView({ banks }) {
           <tbody>
             {data.map((d, di) => (
               <React.Fragment key={d.name}>
-                {/* หัวชื่อธนาคารคั่นบล็อก */}
                 <tr className="bank-divider"><Td colSpan={maxYears + 1}>{d.name}</Td></tr>
-
-                {/* 1) ดอกเบี้ยรวมสะสม */}
                 <tr>
                   <Td className="sub-label">ดอกเบี้ยรวมสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
@@ -546,31 +598,24 @@ function InvestmentView({ banks }) {
                     </Td>
                   ))}
                 </tr>
-
-                {/* 2) เงินต้นคงเหลือปลายปี */}
                 <tr>
                   <Td className="sub-label">เงินต้นคงเหลือปลายปี</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`bal-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.endBalYear || 0)}</Td>
                   ))}
                 </tr>
-
-                {/* 3) เงินลงทุนสะสม (จากยอดโปะ) */}
                 <tr>
                   <Td className="sub-label">เงินลงทุนสะสม</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`cumInv-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInvest || 0)}</Td>
                   ))}
                 </tr>
-
-                {/* 4) มูลค่าเงินลงทุนที่เติบโต (สิ้นปี) */}
                 <tr>
                   <Td className="sub-label">เงินลงทุนที่เติบโต (สิ้นปี)</Td>
                   {Array.from({ length: maxYears }, (_, i) => (
                     <Td key={`grown-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investGrown || 0)}</Td>
                   ))}
                 </tr>
-
                 <tr><Td colSpan={maxYears + 1} style={{height:6}}></Td></tr>
               </React.Fragment>
             ))}
