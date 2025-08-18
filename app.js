@@ -349,12 +349,22 @@ function CompareTable({ banks, onOpenSchedule }) {
       });
 
       const payoffMonths = schedule.rows.length;
+
+      // 3 ปี
       const first36 = schedule.rows.slice(0, 36);
       const int3y = first36.reduce((s, r) => s + r.interest, 0);
       const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0);
+
+      // 5 ปี
+      const first60 = schedule.rows.slice(0, 60);
+      const int5y = first60.reduce((s, r) => s + r.interest, 0);
+      const prepay5y = first60.reduce((s, r) => s + (r.extraPrepay || 0), 0);
+
       const other = sumOtherCosts(b.otherCosts);
-      const total3y = int3y + other; // “รวม 3 ปี” = ดอกเบี้ย 3 ปี + ค่าใช้จ่าย (ไม่รวมยอดโปะ)
-      const estMonthly = first36[0]?.payment || 0;
+      const total3y = int3y + other; // รวม 3 ปี = ดอกเบี้ย 3 ปี + ค่าใช้จ่ายอื่น
+      const total5y = int5y + other; // รวม 5 ปี = ดอกเบี้ย 5 ปี + ค่าใช้จ่ายอื่น
+
+      const estMonthly = first36[0]?.payment || schedule.rows[0]?.payment || 0;
 
       return {
         id: b.id,
@@ -365,6 +375,11 @@ function CompareTable({ banks, onOpenSchedule }) {
         interest3y: int3y,
         otherCosts: other,
         total3y,
+        // 5 ปี
+        prepay5y,
+        interest5y: int5y,
+        total5y,
+
         after3yRate: b.rateAfter,
         payoffMonths,
         totalInterestAll: schedule.totalInterest,
@@ -372,8 +387,15 @@ function CompareTable({ banks, onOpenSchedule }) {
     });
   }, [banks]);
 
-  const currentBase = rows[0]?.total3y ?? null;
-  const best = rows.length ? Math.min(...rows.map((r) => r.total3y)) : null;
+  // สำหรับเทียบไฮไลท์ 3 ปี
+  const best3 = rows.length ? Math.min(...rows.map((r) => r.total3y)) : null;
+  const worst3 = rows.length ? Math.max(...rows.map((r) => r.total3y)) : null;
+
+  // สำหรับเทียบไฮไลท์ 5 ปี
+  const best5 = rows.length ? Math.min(...rows.map((r) => r.total5y)) : null;
+  const worst5 = rows.length ? Math.max(...rows.map((r) => r.total5y)) : null;
+
+  const currentBase = rows[0]?.total3y ?? null; // เทียบธนาคารปัจจุบัน (ยังยึด 3 ปี)
 
   const fmtDelta = (r) => {
     if (r.index === 0 || currentBase === null) return { text: "–", cls: "" };
@@ -381,6 +403,17 @@ function CompareTable({ banks, onOpenSchedule }) {
     if (Math.abs(delta) < 0.005) return { text: "0.00", cls: "" };
     if (delta > 0) return { text: `(${fmtMoney(delta)})`, cls: "text-red mono text-right" };
     return { text: `${fmtMoney(Math.abs(delta))}`, cls: "text-green mono text-right" };
+  };
+
+  const badgeClass3 = (val) => {
+    if (val === best3) return "badge-good";
+    if (val === worst3) return "badge-bad";
+    return "";
+    };
+  const badgeClass5 = (val) => {
+    if (val === best5) return "badge-good";
+    if (val === worst5) return "badge-bad";
+    return "";
   };
 
   return (
@@ -396,6 +429,12 @@ function CompareTable({ banks, onOpenSchedule }) {
             <Th className="text-right">รวม 3 ปี</Th>
             <Th className="text-right">เทียบธนาคารปัจจุบัน</Th>
             <Th className="text-center">ดอกเบี้ยหลัง 3 ปี</Th>
+
+            {/* ====== คอลัมน์ใหม่: มุมมอง 5 ปี ====== */}
+            <Th className="text-right">ดอกเบี้ยรวม 5 ปี</Th>
+            <Th className="text-right">รวม 5 ปี</Th>
+            {/* ====== จบส่วนใหม่ ====== */}
+
             <Th className="text-right">จำนวนงวดที่เหลือ</Th>
             <Th className="text-right">ดอกเบี้ยรวมทั้งสัญญา</Th>
             <Th className="text-center">ตารางผ่อน</Th>
@@ -411,13 +450,26 @@ function CompareTable({ banks, onOpenSchedule }) {
                 <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
+
+                {/* รวม 3 ปี (ไฮไลท์เขียวอ่อน=ต่ำสุด, ชมพูอ่อน=สูงสุด) */}
                 <Td className="text-right font-semibold mono">
-                  <span className={r.total3y === best ? "badge-best" : ""}>
+                  <span className={badgeClass3(r.total3y)}>
                     {fmtMoney(r.total3y)}
                   </span>
                 </Td>
+
                 <Td className={`text-right ${d.cls}`}>{d.text}</Td>
                 <Td className="text-center mono">{fmtRate(r.after3yRate)}%</Td>
+
+                {/* ====== คอลัมน์ใหม่: 5 ปี ====== */}
+                <Td className="text-right mono">{fmtMoney(r.interest5y)}</Td>
+                <Td className="text-right font-semibold mono">
+                  <span className={badgeClass5(r.total5y)}>
+                    {fmtMoney(r.total5y)}
+                  </span>
+                </Td>
+                {/* ====== จบส่วนใหม่ ====== */}
+
                 <Td className="text-right mono">{formatTerm(r.payoffMonths)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
                 <Td className="text-center">
@@ -866,7 +918,9 @@ function App() {
           >
             นำเข้า CSV
           </button>
-          <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">
+          <button className="btn" onClick={() => setBanks((b)=>b)} title="เพิ่มธนาคาร" onClickCapture={()=>{
+            // ป้องกัน event ซ้อน
+          }}>
             ＋ เพิ่มธนาคาร
           </button>
         </div>
@@ -881,21 +935,30 @@ function App() {
                 key={b.id}
                 bank={b}
                 onChange={(next) => updateBank(i, next)}
-                onRemove={() => removeBank(i)}
-                onMoveUp={() => moveBank(i, -1)}
-                onMoveDown={() => moveBank(i, +1)}
+                onRemove={() => {
+                  if (banks.length === 1) { alert("ต้องมีอย่างน้อย 1 ธนาคาร"); return; }
+                  removeBank(i);
+                }}
+                onMoveUp={() => {
+                  const j = i-1; if (j<0) return;
+                  const arr = banks.slice(); [arr[i],arr[j]]=[arr[j],arr[i]]; setBanks(arr);
+                }}
+                onMoveDown={() => {
+                  const j = i+1; if (j>=banks.length) return;
+                  const arr = banks.slice(); [arr[i],arr[j]]=[arr[j],arr[i]]; setBanks(arr);
+                }}
               />
             ))}
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
+              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี/5 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
             </div>
-            <CompareTable banks={banks} onOpenSchedule={openSchedule} />
+            <CompareTable banks={banks} onOpenSchedule={(i)=>{ window.location.hash = `#/schedule/${i}`; }} />
             <div className="text-xs text-gray-500">
               หมายเหตุ: ระบบจะคำนวณค่างวดใหม่เมื่ออัตราดอกเบี้ยเปลี่ยนทุกช่วง เพื่อคงอายุสัญญาเดิม •
-              “โปะเพิ่ม (%)” จะถูกคิดเป็นเปอร์เซ็นต์ของค่างวดแต่ละงวด แล้วนำไปตัดเงินต้นทันที
+              “โปะเพิ่ม (%)” จะคิดจากค่างวดแต่ละงวด แล้วตัดเงินต้นทันที • “รวม 3 ปี/5 ปี” ไม่รวมยอดโปะ
             </div>
           </div>
         </div>
@@ -904,7 +967,7 @@ function App() {
       {/* ตารางงวดรายเดือน */}
       {isSchedule && banks[scheduleIndex] && (
         <div className="space-y-4">
-          <button className="btn-secondary" onClick={goHome}>
+          <button className="btn-secondary" onClick={()=>{ window.location.hash = "#/"; }}>
             ← กลับ
           </button>
           <ScheduleView bank={banks[scheduleIndex]} />
