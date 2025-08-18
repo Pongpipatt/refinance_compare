@@ -1,6 +1,6 @@
 const { useMemo, useState, useEffect, useRef } = React;
 
-/* ========== Utils ========== */
+/* ================== Utils ================== */
 const toNumber = (v) => (isFinite(+v) ? +v : 0);
 const clamp2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const clamp3 = (n) => Math.round((n + Number.EPSILON) * 1000) / 1000;
@@ -13,12 +13,14 @@ const fmtRate = (n)=> Number(n||0).toFixed(3);
 function parseMoneyInput(str){ if(str==null) return 0; const v=Number(String(str).replace(/,/g,"").trim()); return isFinite(v)?v:0;}
 function formatMoneyInput(v){ if(v===""||v==null) return ""; return fmtMoney(v); }
 
-/* ---------- Core amortization ---------- */
+/* ================== Core amortization ================== */
 function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOverride=null, prepayPct=0, capPerMonth=null }){
   let balance = principal, remaining = termMonths; const rows=[];
   const monthlyRates=[]; let iRate=0, leftInBlock=rateSchedule[0]?.months||0;
-  while(monthlyRates.length<termMonths){ if(leftInBlock<=0){ iRate=(iRate+1)%rateSchedule.length; leftInBlock=rateSchedule[iRate].months; } monthlyRates.push(rateSchedule[iRate].rateYear); leftInBlock--; }
-
+  while(monthlyRates.length<termMonths){
+    if(leftInBlock<=0){ iRate=(iRate+1)%rateSchedule.length; leftInBlock=rateSchedule[iRate].months; }
+    monthlyRates.push(rateSchedule[iRate].rateYear); leftInBlock--;
+  }
   for(let m=0; m<termMonths && balance>0; m++){
     const rYear=monthlyRates[m]/100, r=rYear/12;
     const basePay = monthlyPaymentOverride ? monthlyPaymentOverride : pmt(r, remaining, balance);
@@ -26,7 +28,10 @@ function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOver
     let principalPay = Math.max(0, basePay - interest);
     const desiredExtra = Math.max(0, basePay * (prepayPct/100));
     let allowedExtra = desiredExtra; let extraCapped=false;
-    if(capPerMonth && capPerMonth>0){ const room=Math.max(0, capPerMonth - basePay); if(desiredExtra > room + 1e-9){ allowedExtra=room; extraCapped=true; } }
+    if(capPerMonth && capPerMonth>0){
+      const room=Math.max(0, capPerMonth - basePay);
+      if(desiredExtra > room + 1e-9){ allowedExtra=room; extraCapped=true; }
+    }
     let principalAll = principalPay + allowedExtra;
     if(principalAll > balance || remaining===1) principalAll = balance;
     const endBalance = Math.max(0, balance - principalAll);
@@ -39,7 +44,7 @@ function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOver
 }
 function sumOtherCosts(otherCosts){ return Object.values(otherCosts||{}).reduce((s,v)=>s+Number(v||0),0); }
 
-/* ---------- Inputs ---------- */
+/* ================== Inputs ================== */
 function MoneyInput({ value, onChange, placeholder }) {
   const [txt, setTxt] = useState(value===null?"":formatMoneyInput(value));
   useEffect(()=> setTxt(value===null?"":formatMoneyInput(value)), [value]);
@@ -57,19 +62,19 @@ function RateInput({ value, onChange }){
   return <input type="text" inputMode="decimal" className="ipt ipt-num mono" defaultValue={txt} onInput={onInput} onBlur={onBlur} onFocus={onFocus} />;
 }
 
-/* ---------- Defaults ---------- */
+/* ================== Defaults ================== */
 const DEFAULT_BANKS = [
   { id: genId(), name:"กรุงศรี (ปัจจุบัน)", principal:2623000, termYears:20, rate1:5.37, rate2:5.37, rate3:5.37, rateAfter:5.37, monthlyOverride:15700, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":0,"ค่าปรับปิดก่อน":0 } },
   { id: genId(), name:"ออมสิน (โปร Q3/2568)", principal:2623000, termYears:20, rate1:1.99, rate2:3.805, rate3:3.805, rateAfter:6.37, monthlyOverride:null, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":1000,"ค่าปรับปิดก่อน":0 } },
 ];
 
-/* ---------- helpers ---------- */
+/* ================== helpers ================== */
 function L({ label, children }){ return (<label className="block text-sm"><div className="text-gray-600 mb-1">{label}</div>{children}</label>); }
 function Th({ children, className="" }){ return <th className={`text-left ${className}`}>{children}</th>; }
 function Td({ children, className="" }){ return <td className={`align-top ${className}`}>{children}</td>; }
 function formatTerm(termMonths){ const y=Math.floor(termMonths/12), m=termMonths%12; return `${termMonths} งวด (${y} ปี${m?" "+m+" เดือน":""})`; }
 
-/* ---------- refinance schedule ---------- */
+/* ================== refinance schedule ================== */
 function makeRateSchedule(bank, termMonths, behavior){
   const block3=[bank.rate1, bank.rate2, bank.rate3];
   const block5=[bank.rate1, bank.rate2, bank.rate3, bank.rateAfter, bank.rateAfter];
@@ -87,7 +92,7 @@ function makeRateSchedule(bank, termMonths, behavior){
   return blocks;
 }
 
-/* ---------- Editor ---------- */
+/* ================== Editor ================== */
 function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   const handle=(f,v)=> onChange({ ...bank, [f]: v });
   const handleCost=(k,v)=> onChange({ ...bank, otherCosts:{ ...(bank.otherCosts||{}), [k]:v } });
@@ -126,7 +131,7 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   );
 }
 
-/* ---------- Compare Table ---------- */
+/* ================== Compare Table ================== */
 function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus, showFocus }){
   const rows = useMemo(()=> banks.map((b,idx)=>{
     const planned=Math.round(b.termYears*12);
@@ -213,7 +218,7 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
   );
 }
 
-/* ---------- Schedule View ---------- */
+/* ================== Schedule View ================== */
 const TH_MONTHS=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=new Date(y, m-1+add, 1); const mm=String(d.getMonth()+1).padStart(2,"0"); return `${d.getFullYear()}-${mm}`; }
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
@@ -274,7 +279,7 @@ function ScheduleView({ bank, refinanceBehavior }){
   );
 }
 
-/* ---------- Dropdown Multi (เลือกธนาคาร) ---------- */
+/* ================== Dropdown Multi ================== */
 function useOnClickOutside(ref, handler){
   useEffect(()=>{ const listener=(e)=>{ if(!ref.current || ref.current.contains(e.target)) return; handler(e); }; document.addEventListener('mousedown', listener); document.addEventListener('touchstart', listener); return ()=>{ document.removeEventListener('mousedown', listener); document.removeEventListener('touchstart', listener); }; },[ref, handler]);
 }
@@ -304,7 +309,7 @@ function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   );
 }
 
-/* ---------- Investment View (centered) ---------- */
+/* ================== Investment View ================== */
 function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   const [overridePrepayPct, setOverridePrepayPct] = useState("");
   const [monthlyCap, setMonthlyCap] = useState("");
@@ -347,7 +352,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit } };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
-  const maxYears=Math.max(0, ...calcData.map(d=>d.years.length));
+  const maxYears = Math.max(0, ...calcData.map(d=>d.years.length)); // <<<<< ถูกประกาศครั้งเดียว
 
   /* ---- chart ---- */
   useEffect(()=>{ if(!showChart) return; const canvas=canvasRef.current; if(!canvas) return; const ctx=canvas.getContext("2d"); const dpi=window.devicePixelRatio||1;
@@ -381,8 +386,6 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 
   const exportCSV=()=>{ const header=["ธนาคาร","ปี","ดอกเบี้ยที่ประหยัดสะสม","กำไรลงทุนสะสม","เงินต้นลงทุนสะสม","มูลค่าพอร์ตลงทุน(สิ้นปี)"].join(","); const body=calcData.map(d=> d.years.map(y=>[d.name, y.yearIndex,(d.chartSeries.saved[y.yearIndex-1]||0).toFixed(2),(d.chartSeries.profit[y.yearIndex-1]||0).toFixed(2), y.cumInvest.toFixed(2), y.investValue.toFixed(2)].join(",")).join("\r\n")).join("\r\n"); const csv="\uFEFF"+header+"\r\n"+body; const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="investment_compare.csv"; a.click(); URL.revokeObjectURL(url); };
 
-  const maxYears=Math.max(0, ...calcData.map(d=>d.years.length));
-
   return (
     <div className="space-y-3">
       <div className="invest-head">มุมมองลงทุน (ต่อปี)</div>
@@ -413,8 +416,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <input className="ipt ipt-num ipt-sm mono" style={{width:90}} placeholder="5–8" defaultValue={expectReturn} onBlur={(e)=> setExpectReturn(e.target.value.trim())}/>
         </div>
 
-        <button className="btn-secondary ipt-sm" onClick={exportCSV}>Export CSV</button>
-        <button className="btn ipt-sm" onClick={()=>setShowChart(true)}>ดูกราฟ</button>
+        <button className="btn-secondary ipt-sm" onClick={exportCSV} title="ส่งออกข้อมูลการลงทุน (CSV)">Export CSV</button>
+        <button className="btn ipt-sm" onClick={()=>setShowChart(true)} title="ดูกราฟเปรียบเทียบ">ดูกราฟ</button>
       </div>
 
       {/* ตาราง */}
@@ -478,12 +481,23 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   );
 }
 
-/* ---------- App ---------- */
+/* ================== App ================== */
 function useLocalState(key, initial){
   const [state, setState]=useState(()=>{ try{ const s=localStorage.getItem(key); return s? JSON.parse(s): initial; }catch{ return initial; } });
   useEffect(()=>{ localStorage.setItem(key, JSON.stringify(state)); },[key, state]);
   return [state, setState];
 }
+
+/* ---- ไอคอน (SVG) สำหรับปุ่มยาว ๆ ---- */
+const IconDownload=()=>(
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M3 21h18"/></svg>
+);
+const IconUpload=()=>(
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 21V9m0 0l4 4m-4-4l-4 4"/><path d="M3 3h18"/></svg>
+);
+const IconPlus=()=>(
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14"/></svg>
+);
 
 function App(){
   const [banks, setBanks]=useLocalState("mortgage-banks", DEFAULT_BANKS);
@@ -531,14 +545,21 @@ function App(){
               <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
             </select>
 
-            <button className="btn-secondary ipt-sm" onClick={openInvest} title="มุมมองลงทุน (ปีละ)">มุมมองลงทุน (ปีละ)</button>
+            <button className="btn-secondary ipt-sm" onClick={openInvest} title="มุมมองลงทุน (ปีละ)">มุมมองลงทุน</button>
 
             {!isInvest && (
               <>
                 <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
-                <button className="btn-secondary ipt-sm" onClick={downloadTemplateCSV}>ดาวน์โหลดเทมเพลต</button>
-                <button className="btn-secondary ipt-sm" onClick={onClickImport}>นำเข้า CSV</button>
-                <button className="btn ipt-sm" onClick={addBank}>＋ เพิ่มธนาคาร</button>
+                {/* ไอคอน + tooltip */}
+                <button className="btn-secondary icon-btn" onClick={downloadTemplateCSV} title="ดาวน์โหลดเทมเพลต CSV (Download)">
+                  <IconDownload/>
+                </button>
+                <button className="btn-secondary icon-btn" onClick={onClickImport} title="นำเข้า CSV (Upload)">
+                  <IconUpload/>
+                </button>
+                <button className="btn icon-btn" onClick={addBank} title="เพิ่มธนาคาร">
+                  <IconPlus/>
+                </button>
               </>
             )}
           </div>
@@ -580,7 +601,7 @@ function App(){
   );
 }
 
-/* ---------- CSV helpers ---------- */
+/* ================== CSV helpers ================== */
 function parseCSV(text){ const rows=[]; let i=0, field="", row=[], inQuotes=false;
   while(i<text.length){ const c=text[i];
     if(inQuotes){ if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i+=2; continue;} inQuotes=false; i++; continue;} field+=c; i++; continue; }
@@ -600,6 +621,6 @@ function banksFromCSV(csvText){
   return list;
 }
 
-/* ---------- Mount ---------- */
+/* ================== Mount ================== */
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
