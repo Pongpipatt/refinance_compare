@@ -11,7 +11,10 @@ function pmt(r, n, P) {
   return (P * r * a) / (a - 1);
 }
 
-// ตารางคำนวณ: ค่างวด (หรือ override) + โปะเพิ่ม (%) ของค่างวดงวดนั้น → ไปหักเงินต้นเพิ่ม
+// uid ถาวรสำหรับ key
+const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+
+// ตารางคำนวณ
 function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOverride = null, prepayPct = 0 }) {
   let balance = principal;
   let remaining = termMonths;
@@ -91,6 +94,7 @@ function RateInput({ value, onChange }) {
 // ---------- Defaults ----------
 const DEFAULT_BANKS = [
   {
+    id: genId(),
     name: "กรุงศรี (ปัจจุบัน)",
     principal: 2623000,
     termYears: 20,
@@ -103,6 +107,7 @@ const DEFAULT_BANKS = [
     otherCosts: { MRTA: 0, "ค่าประเมิน": 0, "ค่าจดจำนอง": 0, "ค่าธรรมเนียม": 0, "ค่าปรับปิดก่อน": 0 },
   },
   {
+    id: genId(),
     name: "ออมสิน (โปร Q3/2568)",
     principal: 2623000,
     termYears: 20,
@@ -128,7 +133,7 @@ function L({ label, children }) {
 function Th({ children, className = "" }) { return <th className={`text-left ${className}`}>{children}</th>; }
 function Td({ children, className = "" }) { return <td className={`align-top ${className}`}>{children}</td>; }
 
-// ---------- Bank editor (เพิ่มปุ่มย้ายลำดับ) ----------
+// ---------- Bank editor ----------
 function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   const handle=(f,v)=>onChange({ ...bank, [f]: v });
   const handleCost=(k,v)=>onChange({ ...bank, otherCosts:{ ...(bank.otherCosts||{}), [k]: v } });
@@ -167,7 +172,7 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   );
 }
 
-// ---------- Compare table (แสดงงวดจริงหลังโปะ + สลับคอลัมน์โปะรวม 3 ปี มาก่อนดอกเบี้ยรวม 3 ปี) ----------
+// ---------- Compare table ----------
 function formatTerm(termMonths){ const y=Math.floor(termMonths/12), m=termMonths%12; return `${termMonths} งวด (${y} ปี${m? " "+m+" เดือน": ""})`; }
 
 function CompareTable({ banks, onOpenSchedule }) {
@@ -191,12 +196,13 @@ function CompareTable({ banks, onOpenSchedule }) {
       const payoffMonths = schedule.rows.length;
       const first36 = schedule.rows.slice(0, 36);
       const int3y = first36.reduce((s, r) => s + r.interest, 0);
-      const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0); // โปะรวม 3 ปี
+      const prepay3y = first36.reduce((s, r) => s + (r.extraPrepay || 0), 0);
       const other = sumOtherCosts(b.otherCosts);
-      const total3y = int3y + other; // ไม่รวมยอดโปะ
+      const total3y = int3y + other;
       const estMonthly = first36[0]?.payment || 0;
 
       return {
+        id: b.id,
         index: idx,
         name: b.name,
         monthly: estMonthly,
@@ -222,11 +228,6 @@ function CompareTable({ banks, onOpenSchedule }) {
     return { text: `${fmtMoney(Math.abs(delta))}`, cls: "text-green mono text-right" };
   };
 
-  const formatTerm = (termMonths) => {
-    const y = Math.floor(termMonths / 12), m = termMonths % 12;
-    return `${termMonths} งวด (${y} ปี${m ? " " + m + " เดือน" : ""})`;
-  };
-
   return (
     <div className="table-wrap">
       <table className="min-w-full text-sm">
@@ -234,7 +235,7 @@ function CompareTable({ banks, onOpenSchedule }) {
           <tr>
             <Th>ธนาคาร</Th>
             <Th className="text-right">ค่างวด/เดือน (ประมาณ)</Th>
-            <Th className="text-right">โปะรวม 3 ปี</Th> {/* ย้ายมาก่อน */}
+            <Th className="text-right">โปะรวม 3 ปี</Th>
             <Th className="text-right">ดอกเบี้ยรวม 3 ปี</Th>
             <Th className="text-right">ค่าใช้จ่ายอื่น ๆ</Th>
             <Th className="text-right">รวม 3 ปี</Th>
@@ -249,11 +250,11 @@ function CompareTable({ banks, onOpenSchedule }) {
           {rows.map((r) => {
             const d = fmtDelta(r);
             return (
-              <tr key={r.index}>
+              <tr key={r.id}>
                 <Td>{r.name}</Td>
                 <Td className="text-right font-medium mono">{fmtMoney(r.monthly)}</Td>
-                <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td> {/* แสดงยอดโปะรวม 3 ปี */}
-                <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td> {/* ดอกเบี้ยรวม 3 ปี */}
+                <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td>
+                <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
                 <Td className="text-right font-semibold mono">
                   <span className={r.total3y === best ? "badge-best" : ""}>{fmtMoney(r.total3y)}</span>
@@ -274,7 +275,7 @@ function CompareTable({ banks, onOpenSchedule }) {
   );
 }
 
-// ---------- Schedule view (เดิม) ----------
+// ---------- Schedule view ----------
 const TH_MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=new Date(y, m-1+add, 1); const mm=String(d.getMonth()+1).padStart(2,"0"); return `${d.getFullYear()}-${mm}`; }
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
@@ -370,10 +371,109 @@ function ScheduleView({ bank }){
   );
 }
 
-// ---------- App (เพิ่มย้ายลำดับ) ----------
+// ---------- CSV Parser (รองรับข้อมูลมีเครื่องหมายคำพูด) ----------
+function parseCSV(text){
+  const rows = [];
+  let i=0, field="", row=[], inQuotes=false;
+  while(i<text.length){
+    const c=text[i];
+    if(inQuotes){
+      if(c==='\"'){
+        if(text[i+1]==='\"'){ field+='\"'; i+=2; continue; }
+        inQuotes=false; i++; continue;
+      }
+      field+=c; i++; continue;
+    }else{
+      if(c==='\"'){ inQuotes=true; i++; continue; }
+      if(c===','){ row.push(field.trim()); field=""; i++; continue; }
+      if(c==='\n' || c==='\r'){
+        // new line
+        if(c==='\r' && text[i+1]==='\n') i++;
+        row.push(field.trim()); rows.push(row); field=""; row=[]; i++; continue;
+      }
+      field+=c; i++; continue;
+    }
+  }
+  // last field
+  if(field.length>0 || row.length>0){ row.push(field.trim()); rows.push(row); }
+  return rows;
+}
+
+// map CSV -> bank objects
+function banksFromCSV(csvText){
+  const rows = parseCSV(csvText).filter(r=>r.length>0 && r.some(x=>x!==""));
+  if(rows.length===0) return [];
+  const header = rows[0].map(h=>h.trim());
+  const idx = (name)=> header.findIndex(h=>h.toLowerCase()===name.toLowerCase());
+
+  const col = {
+    name: idx('name'),
+    principal: idx('principal'),
+    termYears: idx('termYears'),
+    rate1: idx('rate1'),
+    rate2: idx('rate2'),
+    rate3: idx('rate3'),
+    rateAfter: idx('rateAfter'),
+    monthlyOverride: idx('monthlyOverride'),
+    prepayPct: idx('prepayPct'),
+    MRTA: idx('MRTA'),
+    appr: header.findIndex(h=>h==="ค่าประเมิน"),
+    reg: header.findIndex(h=>h==="ค่าจดจำนอง"),
+    fee: header.findIndex(h=>h==="ค่าธรรมเนียม"),
+    preclose: header.findIndex(h=>h==="ค่าปรับปิดก่อน"),
+  };
+
+  const list = [];
+  for(let r=1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row || row.length===0) continue;
+    const val = (i)=> i>=0 && i<row.length ? row[i]: "";
+
+    // ข้ามแถวว่าง
+    if((val(col.name)||"").trim()==="") continue;
+
+    const otherCosts = {
+      MRTA: toNumber(val(col.MRTA)),
+      "ค่าประเมิน": toNumber(val(col.appr)),
+      "ค่าจดจำนอง": toNumber(val(col.reg)),
+      "ค่าธรรมเนียม": toNumber(val(col.fee)),
+      "ค่าปรับปิดก่อน": toNumber(val(col.preclose)),
+    };
+
+    list.push({
+      id: genId(),
+      name: val(col.name),
+      principal: toNumber(val(col.principal)),
+      termYears: toNumber(val(col.termYears)),
+      rate1: toNumber(val(col.rate1)),
+      rate2: toNumber(val(col.rate2)),
+      rate3: toNumber(val(col.rate3)),
+      rateAfter: toNumber(val(col.rateAfter)),
+      monthlyOverride: (val(col.monthlyOverride)==="" ? null : toNumber(val(col.monthlyOverride))),
+      prepayPct: toNumber(val(col.prepayPct)),
+      otherCosts,
+    });
+  }
+  return list;
+}
+
+// ---------- App ----------
 function App(){
   const [banks, setBanks] = useLocalState("mortgage-banks", DEFAULT_BANKS);
   const [route, setRoute] = useState(window.location.hash || "#/");
+  const fileRef = React.useRef(null);
+
+  // บังคับเติม id ให้ของเก่าใน localStorage (กัน key เป็น index)
+  useEffect(()=>{
+    setBanks(prev=>{
+      let changed=false;
+      const fixed = (prev||[]).map(b=>{
+        if(!b.id){ changed=true; return { ...b, id: genId() }; }
+        return b;
+      });
+      return changed ? fixed : prev;
+    });
+  },[]); // run once
 
   useEffect(()=>{ const onHash=()=>setRoute(window.location.hash||"#/"); window.addEventListener("hashchange", onHash); return ()=>window.removeEventListener("hashchange", onHash); },[]);
 
@@ -381,6 +481,7 @@ function App(){
   const openSchedule = (i)=>{ window.location.hash=`#/schedule/${i}`; };
 
   const addBank = ()=>setBanks([...banks, {
+    id: genId(),
     name:`ตัวเลือกใหม่ #${banks.length+1}`,
     principal: banks[0]?.principal ?? 2000000,
     termYears: banks[0]?.termYears ?? 20,
@@ -392,7 +493,7 @@ function App(){
   const removeBank = (i)=>setBanks(banks.filter((_,idx)=>idx!==i));
   const updateBank = (i,next)=>setBanks(banks.map((b,idx)=>(idx===i? next: b)));
 
-  // ย้ายลำดับ
+  // ย้ายลำดับ (ตอนนี้ key เป็น id แล้ว ไม่มี state เพี้ยน)
   const moveBank = (i, dir) => {
     const j = i + dir;
     if (j < 0 || j >= banks.length) return;
@@ -401,8 +502,44 @@ function App(){
     setBanks(arr);
   };
 
+  // Import CSV
+  const onClickImport = ()=> fileRef.current?.click();
+  const onFileChange = async (e)=>{
+    const f = e.target.files?.[0];
+    if(!f) return;
+    const text = await f.text();
+    const list = banksFromCSV(text);
+    if(list.length===0){ alert("ไม่พบข้อมูลที่นำเข้า ตรวจสอบหัวตาราง/คอลัมน์อีกครั้ง"); return; }
+    setBanks(list);
+    e.target.value = ""; // reset
+  };
+
   const isSchedule = route.startsWith("#/schedule/");
   let scheduleIndex = null; if(isSchedule){ const parts=route.split("/"); scheduleIndex=+parts[2]; }
+
+  // ดาวน์โหลดเทมเพลต CSV
+  const downloadTemplateCSV = () => {
+    const header = [
+      "name","principal","termYears",
+      "rate1","rate2","rate3","rateAfter",
+      "monthlyOverride","prepayPct",
+      "MRTA","ค่าประเมิน","ค่าจดจำนอง","ค่าธรรมเนียม","ค่าปรับปิดก่อน"
+    ].join(",");
+
+    const sample = [
+      "กรุงศรี (ปัจจุบัน),2623000,20,5.37,5.37,5.37,5.37,15700,0,0,0,0,0,0",
+      "ออมสิน (โปร Q3/2568),2623000,20,1.99,3.805,3.805,6.37,,0,0,0,0,1000,0"
+    ].join("\n");
+
+    const csv = header + "\n" + sample;
+    const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "mortgage_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6">
@@ -415,35 +552,12 @@ function App(){
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
+          <button className="btn-secondary" onClick={downloadTemplateCSV} title="ดาวน์โหลดไฟล์ตัวอย่าง CSV">ดาวน์โหลดเทมเพลต</button>
+          <button className="btn-secondary" onClick={onClickImport} title="นำเข้าข้อมูลธนาคารจาก CSV">นำเข้า CSV</button>
           <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">＋ เพิ่มธนาคาร</button>
         </div>
       </div>
-
-      {!isSchedule && (
-        <div className="space-y-6">
-          <div className="space-y-4">
-            {banks.map((b,i)=>(
-              <BankEditor
-                key={i}
-                bank={b}
-                onChange={(next)=>updateBank(i,next)}
-                onRemove={()=>removeBank(i)}
-                onMoveUp={()=>moveBank(i,-1)}
-                onMoveDown={()=>moveBank(i,+1)}
-              />
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-              สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
-            </div>
-            <CompareTable banks={banks} onOpenSchedule={openSchedule}/>
-            <div className="text-xs text-gray-500">
-              หมายเหตุ: ระบบจะคำนวณค่างวดใหม่เมื่ออัตราดอกเบี้ยเปลี่ยนทุกช่วง เพื่อคงอายุสัญญาเดิม •
-              “โปะเพิ่ม (%)” จะถูกคิดเป็นเปอร์เซ็นต์ของค่างวดแต่ละงวด แล้วนำไปตัดเงินต้นทันที
-            </div>
-          </div>
         </div>
       )}
 
