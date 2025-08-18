@@ -12,38 +12,120 @@ function parseMoneyInput(str){ if(str==null) return 0; const v=Number(String(str
 function formatMoneyInput(v){ if(v===""||v==null) return ""; return fmtMoney(v); }
 
 /* ========== Core amortization ========== */
-function buildSchedule({ principal, termMonths, rateSchedule, monthlyPaymentOverride=null, prepayPct=0, capPerMonth=null }){
-  let balance = principal, remaining = termMonths; const rows=[];
-  const monthlyRates=[]; let iRate=0, leftInBlock=rateSchedule[0]?.months||0;
-  while(monthlyRates.length<termMonths){
-    if(leftInBlock<=0){ iRate=(iRate+1)%rateSchedule.length; leftInBlock=rateSchedule[iRate].months; }
-    monthlyRates.push(rateSchedule[iRate].rateYear); leftInBlock--;
-  }
-  for(let m=0; m<termMonths && balance>0; m++){
-    const rYear=monthlyRates[m]/100, r=rYear/12;
-    const basePay = monthlyPaymentOverride ? monthlyPaymentOverride : pmt(r, remaining, balance);
-    const interest = balance * r;
-    let principalPay = Math.max(0, basePay - interest);
+/** คำนวณแบบ "ตรึงค่างวดในแต่ละช่วงดอก" (ค่าเริ่มต้น) */
+function buildSchedule({
+  principal,
+  termMonths,
+  rateSchedule,                 // [{months:12, rateYear:...}, ...]
+  monthlyPaymentOverride = null,
+  prepayPct = 0,                // โปะเพิ่มเป็น % ของค่างวด
+  capPerMonth = null,           // เพดาน (ค่างวด+โปะ/ลงทุน) ต่อเดือน
+  installmentMode = "fixPerBlock" // มีไว้เผื่ออนาคต (ตอนนี้ใช้ fixPerBlock)
+}){
+  let balance = principal;
+  const rows = [];
 
-    const desiredExtra = Math.max(0, basePay * (prepayPct/100));
-    let allowedExtra = desiredExtra; let extraCapped=false;
-    if(capPerMonth && capPerMonth>0){
-      const room=Math.max(0, capPerMonth - basePay);
-      if(desiredExtra > room + 1e-9){ allowedExtra=room; extraCapped=true; }
+  // กระจายเดือน + หมายเลขบล็อก
+  const months=[];
+  for(let bi=0; bi<rateSchedule.length; bi++){
+    const {months:mCnt, rateYear} = rateSchedule[bi];
+    for(let k=0; k<mCnt; k++) months.push({blockIndex:bi, rYear:rateYear});
+  }
+  months.length = Math.min(termMonths, months.length);
+
+  let i=0;
+  while(i<months.length && balance>0){
+    const curBlock = months[i].blockIndex;
+    const r = (months[i].rYear/100)/12;
+
+    // ความยาวบล็อกจากตำแหน่งปัจจุบัน
+    let blockLen=0; for(let j=i;j<months.length;j++){ if(months[j].blockIndex!==curBlock) break; blockLen++; }
+    let remaining = months.length - i;
+
+    // PMT ตรึงในบล็อก
+    const basePay = monthlyPaymentOverride
+      ? monthlyPaymentOverride
+      : (r===0 ? balance/remaining : (balance*r*Math.pow(1+r,remaining))/(Math.pow(1+r,remaining)-1));
+
+    for(let k=0;k<blockLen && balance>0;k++){
+      const interest = balance * r;
+      let principalPay = Math.max(0, basePay - interest);
+
+      // ต้องการโปะจาก % ของค่างวด
+      const desiredExtra = Math.max(0, basePay*(prepayPct/100));
+      let allowedExtra = desiredExtra, extraCapped=false;
+      if(capPerMonth && capPerMonth>0){
+        const room = Math.max(0, capPerMonth - basePay);
+        if(desiredExtra > room + 1e-9){ allowedExtra = room; extraCapped=true; }
+      }
+
+      let principalAll = principalPay + allowedExtra;
+      if(principalAll > balance || remaining===1) principalAll = balance;
+
+      const endBalance = Math.max(0, balance - principalAll);
+      rows.push({
+        index: rows.length+1,
+        rate: months[i+k].rYear,
+        payment: basePay,
+        extraPrepay: allowedExtra,
+        principal: principalPay,
+        principalTotal: principalAll,
+        interest,
+        endBalance,
+        extraCapped
+      });
+
+      balance = endBalance; remaining -= 1;
+      if(balance<=0) break;
     }
-
-    let principalAll = principalPay + allowedExtra;
-    if(principalAll > balance || remaining===1) principalAll = balance;
-
-    const endBalance = Math.max(0, balance - principalAll);
-    rows.push({ index:m+1, rate:rYear*100, payment:basePay, extraPrepay:allowedExtra, principal:principalPay, principalTotal:principalAll, interest, endBalance, extraCapped });
-    balance=endBalance; remaining-=1; if(balance<=0) break;
+    i += blockLen;
   }
-  const totalInterest=rows.reduce((s,r)=>s+r.interest,0);
-  const totalPayment=rows.reduce((s,r)=>s+r.payment+r.extraPrepay,0);
-  return { rows, totalInterest, totalPayment, endBalance:balance };
+
+  const totalInterest = rows.reduce((s,r)=>s+r.interest,0);
+  const totalPayment  = rows.reduce((s,r)=>s+r.payment+r.extraPrepay,0);
+  return { rows, totalInterest, totalPayment, endBalance: balance };
 }
 function sumOtherCosts(otherCosts){ return Object.values(otherCosts||{}).reduce((s,v)=>s+Number(v||0),0); }
+
+/* ========== คำนวณ "ลงทุนรายเดือน+ทบต้นรายเดือน" ========== */
+function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expectReturnYear){
+  const rM = Math.pow(1 + (Number(expectReturnYear||0)/100), 1/12) - 1; // ผลตอบแทน/เดือน
+  let investValue = 0;   // มูลค่าพอร์ต ณ สิ้นเดือน
+  let cumInvest   = 0;   // เงินต้นที่ลงสะสม
+  const perYear   = [];
+  let capHitThisYear = false;
+
+  for(let m=0; m<baseRows.length; m++){
+    const pay = baseRows[m].payment || 0;
+    const desired = Math.max(0, pay*(Number(investPct||0)/100));
+    let allowed  = desired;
+
+    if(capPerMonth && capPerMonth>0){
+      const room = Math.max(0, capPerMonth - pay);
+      if(desired > room + 1e-9){ allowed = room; capHitThisYear = true; }
+    }
+
+    // เติมเงินก้อนเดือนนี้ก่อน แล้วค่อยปิดเดือนด้วยดอก/เดือน
+    investValue += allowed;
+    cumInvest   += allowed;
+    investValue *= (1 + rM);
+
+    const endOfYear = ((m+1)%12===0) || (m===baseRows.length-1);
+    if(endOfYear){
+      const yearIndex = Math.floor(m/12)+1;
+      const profit = Math.max(0, investValue - cumInvest);
+      perYear.push({
+        yearIndex,
+        investValue,
+        investProfit: profit,
+        cumInvest,
+        capHitInvest: capHitThisYear
+      });
+      capHitThisYear = false;
+    }
+  }
+  return perYear;
+}
 
 /* ========== Inputs ========== */
 function MoneyInput({ value, onChange, placeholder }) {
@@ -136,7 +218,11 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
 function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus, showFocus }){
   const rows = useMemo(()=> banks.map((b,idx)=>{
     const planned=Math.round(b.termYears*12);
-    const schedule=buildSchedule({ principal:b.principal, termMonths:planned, rateSchedule:makeRateSchedule(b, planned, refinanceBehavior), monthlyPaymentOverride:b.monthlyOverride, prepayPct:b.prepayPct||0 });
+    const schedule=buildSchedule({
+      principal:b.principal, termMonths:planned,
+      rateSchedule:makeRateSchedule(b, planned, refinanceBehavior),
+      monthlyPaymentOverride:b.monthlyOverride, prepayPct:b.prepayPct||0, installmentMode:"fixPerBlock"
+    });
     const payoffMonths=schedule.rows.length, first36=schedule.rows.slice(0,36), first60=schedule.rows.slice(0,60);
     const int3y=first36.reduce((s,r)=>s+r.interest,0), prepay3y=first36.reduce((s,r)=>s+(r.extraPrepay||0),0);
     const int5y=first60.reduce((s,r)=>s+r.interest,0), prepay5y=first60.reduce((s,r)=>s+(r.extraPrepay||0),0);
@@ -228,7 +314,11 @@ function ScheduleView({ bank, refinanceBehavior }){
   const planned=Math.round(bank.termYears*12);
   const [startYM, setStartYM]=useState(()=>{ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`; });
 
-  const schedule=useMemo(()=> buildSchedule({ principal:bank.principal, termMonths:planned, rateSchedule:makeRateSchedule(bank, planned, refinanceBehavior), monthlyPaymentOverride:bank.monthlyOverride, prepayPct:bank.prepayPct||0 }), [bank, planned, refinanceBehavior]);
+  const schedule=useMemo(()=> buildSchedule({
+    principal:bank.principal, termMonths:planned,
+    rateSchedule:makeRateSchedule(bank, planned, refinanceBehavior),
+    monthlyPaymentOverride:bank.monthlyOverride, prepayPct:bank.prepayPct||0, installmentMode:"fixPerBlock"
+  }), [bank, planned, refinanceBehavior]);
 
   const totalI=schedule.totalInterest, totalP=schedule.rows.reduce((s,r)=>s+r.principalTotal,0);
 
@@ -329,40 +419,47 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     const pctUse = (overridePrepayPct===""? (b.prepayPct||0) : Number(overridePrepayPct||0));
     const cap = Number(monthlyCap||0);
 
-    const schedWith = buildSchedule({ principal:b.principal, termMonths, rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior), monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse, capPerMonth: cap>0? cap: null });
-    const schedBase = buildSchedule({ principal:b.principal, termMonths, rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior), monthlyPaymentOverride:b.monthlyOverride, prepayPct:0 });
+    // ตาราง "โปะจริง"
+    const schedWith = buildSchedule({
+      principal:b.principal, termMonths,
+      rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior),
+      monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse, capPerMonth: cap>0? cap: null, installmentMode:"fixPerBlock"
+    });
 
+    // ตาราง "ไม่โปะ" (ใช้เป็นฐานทั้งดอกเบี้ยรวม และฐานคำนวณเงินที่จะไปลงทุนแทน)
+    const schedBase = buildSchedule({
+      principal:b.principal, termMonths,
+      rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior),
+      monthlyPaymentOverride:b.monthlyOverride, prepayPct:0, capPerMonth:null, installmentMode:"fixPerBlock"
+    });
+
+    // ฝั่ง "เอาไปลงทุนแทน" = ลงทุนรายเดือน + ทบต้นรายเดือน
+    const investSeries = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
+
+    // รวมเป็นรายปี
     const years=Math.max(Math.ceil(schedWith.rows.length/12), Math.ceil(schedBase.rows.length/12));
-    const perYear=[]; let cumInterestWith=0, cumInterestBase=0, cumInvest=0; const rYear=Number(expectReturn||0)/100;
+    const perYear=[]; let cumInterestWith=0, cumInterestBase=0;
 
     for(let y=0;y<years;y++){
       const sw=schedWith.rows.slice(y*12,y*12+12), sb=schedBase.rows.slice(y*12,y*12+12);
       const interestWith=sw.reduce((s,row)=>s+row.interest,0), interestBase=sb.reduce((s,row)=>s+row.interest,0);
-      const investThisYear=sw.reduce((s,row)=>s+row.extraPrepay,0); const hasCap=sw.some(row=>row.extraCapped);
-      cumInterestWith+=interestWith; cumInterestBase+=interestBase; cumInvest+=investThisYear;
+      cumInterestWith+=interestWith; cumInterestBase+=interestBase;
 
-      // คิดมูลค่าลงทุนแบบทบต้นรายปี
-      let grown=0;
-      for(let k=0;k<=y;k++){
-        const invK=schedWith.rows.slice(k*12,k*12+12).reduce((s,r)=>s+r.extraPrepay,0);
-        const yearsHeld=y-k;
-        grown += invK * Math.pow(1+rYear, yearsHeld);
-      }
-      const investProfit=Math.max(0, grown - cumInvest);
+      const invY = investSeries[y] || { investValue:0, investProfit:0, cumInvest:0, capHitInvest:false };
 
       perYear.push({
-        yearIndex:y+1,
-        cumInterestWith,         // ดอกเบี้ยรวมสะสม (มีโปะ)
-        cumInterestBase,         // ดอกเบี้ยรวมสะสม (ไม่โปะ)
-        cumInvest,               // เงินต้นที่นำไปลงทุนสะสม
-        investValue: grown,      // มูลค่าพอร์ตสิ้นปี
-        investProfit,            // กำไรสะสม
-        savedInterestYear:Math.max(0, interestBase - interestWith),
-        capExceed:hasCap
+        yearIndex: y+1,
+        cumInterestWith,        // ดอกเบี้ยรวมสะสม (โปะ)
+        cumInterestBase,        // ดอกเบี้ยรวมสะสม (ไม่โปะ)
+        cumInvest: invY.cumInvest,
+        investValue: invY.investValue,
+        investProfit: invY.investProfit,
+        savedInterestYear: Math.max(0, interestBase - interestWith),
+        capHitInvest: invY.capHitInvest
       });
     }
 
-    // series ที่ต้องใช้กับกราฟ
+    // series สำหรับกราฟ
     let cumSaved=0;
     const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[];
     perYear.forEach(y=>{
@@ -393,7 +490,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         series.push(d.chartSeries.saved);  labels.push(`${d.name} — ดอกเบี้ยที่ประหยัดสะสม`); colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.profit); labels.push(`${d.name} — กำไรลงทุนสะสม`);     colors.push(colorPairs[idx%colorPairs.length][1]);
       });
-    }else{ // 'total' = ดอกเบี้ยรวมสะสม vs กำไรลงทุนสะสม
+    }else{ // 'total'
       selected.forEach((d,idx)=>{
         series.push(d.chartSeries.totBase); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม (ไม่โปะ)`); colors.push("#6b7280");
         series.push(d.chartSeries.totWith); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม (มีโปะ)`); colors.push(colorPairs[idx%colorPairs.length][0]);
@@ -407,7 +504,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       const pad=40*dpi, plotW=W-pad*2, plotH=H-pad*2;
       ctx.clearRect(0,0,W,H); ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
 
-      // grid + axis labels
+      // grid
       ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1; ctx.fillStyle="#6b7280"; ctx.font=`${12*dpi}px sans-serif`;
       for(let i=0;i<=5;i++){
         const y=pad + plotH*(i/5);
@@ -423,7 +520,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       series.forEach((arr,si)=>{
         ctx.beginPath();
         arr.forEach((v,i)=>{ const x=xOf(i,arr.length), y=yOf(v); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-        ctx.strokeStyle=colors[si]; ctx.lineWidth= si%3===0 && graphMode==="total" ? 1.2*dpi : 2*dpi; // base เส้นบางลง
+        ctx.strokeStyle=colors[si]; ctx.lineWidth= si%3===0 && graphMode==="total" ? 1.2*dpi : 2*dpi;
         ctx.stroke();
       });
 
@@ -518,7 +615,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                 <tr>
                   <Td className="sub-label">ดอกเบี้ยรวมสะสม (กรณีมีโปะ)</Td>
                   {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`ci-${di}-${i}`} className={`text-right mono ${d.years[i]?.capExceed?"cap-alert":""}`}>{fmtMoney(d.years[i]?.cumInterestWith||0)}</Td>
+                    <Td key={`ci-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestWith||0)}</Td>
                   ))}
                 </tr>
                 <tr>
@@ -528,9 +625,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                   ))}
                 </tr>
                 <tr>
-                  <Td className="sub-label">เงินต้นลงทุนสะสม (ยอดโปะ)</Td>
+                  <Td className="sub-label">เงินต้นลงทุนสะสม (ยอดลงทุนรายเดือน)</Td>
                   {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`cumInv-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInvest||0)}</Td>
+                    <Td key={`cumInv-${di}-${i}`} className={`text-right mono ${d.years[i]?.capHitInvest?"cap-alert":""}`}>{fmtMoney(d.years[i]?.cumInvest||0)}</Td>
                   ))}
                 </tr>
                 <tr>
@@ -553,9 +650,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       </div>
 
       <div className="text-xs text-gray-500">
-        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ยอดโปะ/ลงทุนถูกจำกัดด้วยเพดานต่อเดือน”
-        • โหมดกราฟ “ประหยัดดอกสะสม” จะแสดง Base=0 ตามนิยาม
-        • โหมด “ดอกเบี้ยรวมสะสม” ทำให้กราฟสอดคล้องกับตารางรวมดอกเบี้ย
+        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
+        โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
+        โหมด “ดอกเบี้ยรวมสะสม” ทำให้กราฟสอดคล้องกับตัวเลขในตารางรวมดอกเบี้ย
       </div>
 
       {showChart && (
@@ -664,7 +761,7 @@ function App(){
 
           <div className="space-y-3">
             <CompareTable banks={banks} refinanceBehavior={refinanceBehavior} onOpenSchedule={openSchedule} onToggleFocus={()=>setFocusCompare(v=>!v)} showFocus={focusCompare} />
-            <div className="text-xs text-gray-500">หมายเหตุ: ระบบจะคำนวณค่างวดใหม่เมื่ออัตราดอกเบี้ยเปลี่ยนทุกช่วง เพื่อคงอายุสัญญาเดิม • “โปะเพิ่ม (%)” จะคิดจากค่างวดแล้วตัดเงินต้นทันที • ตัวเลือก “รีไฟแนนซ์” จะวนอัตราดอกตามรอบที่เลือก</div>
+            <div className="text-xs text-gray-500">หมายเหตุ: ระบบตรึงค่างวดตามช่วงอัตราดอก (คำนวณใหม่เมื่อเปลี่ยนอัตรา) • “โปะเพิ่ม (%)” จะคิดจากค่างวดแล้วตัดเงินต้นทันที • ตัวเลือก “รีไฟแนนซ์” จะวนอัตราดอกตามรอบที่เลือก</div>
           </div>
         </div>
       )}
