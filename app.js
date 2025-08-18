@@ -541,35 +541,64 @@ function App(){
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-2xl bg-gray-900 text-white grid place-items-center"><span className="mono">≡</span></div>
-          <div>
-            <div className="text-xl font-bold text-gray-900">ตัวช่วยเทียบรีไฟแนนซ์บ้าน</div>
-            <div className="text-xs text-gray-500">ใส่ดอกเบี้ยปี 1–3, ค่างวดจริง, ค่าใช้จ่าย และโปะเพิ่ม (%)</div>
-          </div>
+return (
+  <div className="max-w-6xl mx-auto p-4 md:p-6">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 rounded-2xl bg-gray-900 text-white grid place-items-center">
+          <span className="mono">≡</span>
         </div>
-        <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
-          <button className="btn-secondary" onClick={downloadTemplateCSV} title="ดาวน์โหลดไฟล์ตัวอย่าง CSV">ดาวน์โหลดเทมเพลต</button>
-          <button className="btn-secondary" onClick={onClickImport} title="นำเข้าข้อมูลธนาคารจาก CSV">นำเข้า CSV</button>
-          <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">＋ เพิ่มธนาคาร</button>
+        <div>
+          <div className="text-xl font-bold text-gray-900">ตัวช่วยเทียบรีไฟแนนซ์บ้าน</div>
+          <div className="text-xs text-gray-500">ใส่ดอกเบี้ยปี 1–3, ค่างวดจริง, ค่าใช้จ่าย และโปะเพิ่ม (%)</div>
         </div>
       </div>
-        </div>
-      )}
-
-      {isSchedule && banks[scheduleIndex] && (
-        <div className="space-y-4">
-          <button className="btn-secondary" onClick={goHome}>← กลับ</button>
-          <ScheduleView bank={banks[scheduleIndex]} />
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
+        <button className="btn-secondary" onClick={downloadTemplateCSV} title="ดาวน์โหลดไฟล์ตัวอย่าง CSV">ดาวน์โหลดเทมเพลต</button>
+        <button className="btn-secondary" onClick={onClickImport} title="นำเข้าข้อมูลธนาคารจาก CSV">นำเข้า CSV</button>
+        <button className="btn" onClick={addBank} title="เพิ่มธนาคาร">＋ เพิ่มธนาคาร</button>
+      </div>
     </div>
-  );
-}
+
+    {/* ✅ บล็อคแสดงหน้าเปรียบเทียบหลัก */}
+    {!isSchedule && (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          {banks.map((b,i)=>(
+            <BankEditor
+              key={b.id}
+              bank={b}
+              onChange={(next)=>updateBank(i,next)}
+              onRemove={()=>removeBank(i)}
+              onMoveUp={()=>moveBank(i,-1)}
+              onMoveDown={()=>moveBank(i,+1)}
+            />
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            สรุปเทียบ (โฟกัสดอกเบี้ยรวม 3 ปี + ค่าใช้จ่ายอื่น) — พร้อมจำนวนงวดและดอกเบี้ยรวมทั้งสัญญา
+          </div>
+          <CompareTable banks={banks} onOpenSchedule={openSchedule}/>
+          <div className="text-xs text-gray-500">
+            หมายเหตุ: ระบบจะคำนวณค่างวดใหม่เมื่ออัตราดอกเบี้ยเปลี่ยนทุกช่วง เพื่อคงอายุสัญญาเดิม •
+            “โปะเพิ่ม (%)” จะถูกคิดเป็นเปอร์เซ็นต์ของค่างวดแต่ละงวด แล้วนำไปตัดเงินต้นทันที
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ✅ บล็อคตารางงวดรายเดือน */}
+    {isSchedule && banks[scheduleIndex] && (
+      <div className="space-y-4">
+        <button className="btn-secondary" onClick={goHome}>← กลับ</button>
+        <ScheduleView bank={banks[scheduleIndex]} />
+      </div>
+    )}
+  </div>
+);
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
