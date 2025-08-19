@@ -1,3 +1,4 @@
+/* (ไฟล์เต็มตามนี้ วางทับได้เลย) */
 const { useMemo, useState, useEffect, useRef } = React;
 
 /* ========== Utils ========== */
@@ -405,7 +406,6 @@ function ScheduleView({ bank, refinanceBehavior }){
 }
 
 /* ========== Dropdown Multi (Investment) ========== */
-/* ใช้ Portal + position:fixed เพื่อไม่ให้โดนครอบเวลามี overflow-x บน toolbar */
 function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   const [open, setOpen]=useState(false);
   const anchorRef=useRef(null);
@@ -464,7 +464,7 @@ function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   );
 }
 
-/* ========== Investment View (คงเดิม + ปรับกราฟโหมดที่ 2) ========== */
+/* ========== Investment View ========== */
 function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   const [overridePrepayPct, setOverridePrepayPct] = useState("");
   const [monthlyCap, setMonthlyCap] = useState("");
@@ -507,6 +507,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 
       const invY = investSeries[y] || { investValue:0, investProfit:0, cumInvest:0, capHitInvest:false };
 
+      /* คำนวณ Net Investment (ลงทุนสุทธิ) = มูลค่าพอร์ต - ดอกเบี้ยสะสม (กรณีมีโปะ) */
+      const netInvestment = invY.investValue - cumInterestWith;
+
       perYear.push({
         yearIndex: y+1,
         cumInterestWith,
@@ -514,13 +517,14 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         cumInvest: invY.cumInvest,
         investValue: invY.investValue,
         investProfit: invY.investProfit,
+        netInvestment,               // << เพิ่มฟิลด์ใหม่
         savedInterestYear: Math.max(0, interestBase - interestWith),
         capHitInvest: invY.capHitInvest
       });
     }
 
     let cumSaved=0;
-    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[];
+    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[], seriesNet=[];
     perYear.forEach(y=>{
       cumSaved += y.savedInterestYear;
       seriesSaved.push(cumSaved);
@@ -528,9 +532,10 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       seriesTotWith.push(y.cumInterestWith);
       seriesTotBase.push(y.cumInterestBase);
       seriesVal.push(y.investValue);
+      seriesNet.push(y.netInvestment);
     });
 
-    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal } };
+    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal, net:seriesNet } };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
   const maxYears = Math.max(0, ...calcData.map(d=>d.years.length));
@@ -541,7 +546,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     const selected=calcData.filter(d=>selectedIds.includes(d.id)); if(selected.length===0) return;
 
     const colorPairs=[["#10b981","#047857"],["#3b82f6","#1d4ed8"],["#f59e0b","#b45309"]];
-    const series=[], labels=[], colors=[];
+    const series=[], labels=[], colors[];
 
     if(graphMode==="saved"){
       const len0=selected[0].chartSeries.saved.length;
@@ -610,7 +615,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   }, [showChart, calcData, selectedIds, graphMode]);
 
   const exportCSV=()=>{ 
-    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","TotalInterestWith","TotalInterestBase","CapHit"].join(",");
+    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","TotalInterestWith","TotalInterestBase","NetInvestmentCum","CapHit"].join(",");
     const body=calcData.map(d=> d.years.map((y,i)=>[
       d.name, y.yearIndex,
       (d.chartSeries.saved[i]||0).toFixed(2),
@@ -619,6 +624,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       y.investValue.toFixed(2),
       (d.chartSeries.totWith[i]||0).toFixed(2),
       (d.chartSeries.totBase[i]||0).toFixed(2),
+      (d.chartSeries.net[i]|| (y.investValue - (d.chartSeries.totWith[i]||0)) ).toFixed(2),
       y.capHitInvest?1:0
     ].join(",")).join("\r\n")).join("\r\n");
     const csv="\uFEFF"+header+"\r\n"+body; 
@@ -632,95 +638,95 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       <div className="invest-head">Investment (ต่อปี)</div>
 
       {/* controls: one line, scrollable horizontally */}
-<div className="controls-card" title="เลื่อนแนวนอนได้ถ้าพื้นที่ไม่พอ">
-  <div className="controls-scroll">
-    <div className="group">
-      <label className="text-xs text-gray-600">Refinance:</label>
-      <select
-        className="ipt ipt-sm"
-        value={refinanceBehavior}
-        onChange={(e)=>onChangeRefiBehavior(e.target.value)}
-        aria-label="Refinance behavior"
-      >
-        <option value="none">ไม่รีไฟแนนซ์</option>
-        <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
-        <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
-      </select>
-    </div>
+      <div className="controls-card" title="เลื่อนแนวนอนได้ถ้าพื้นที่ไม่พอ">
+        <div className="controls-scroll">
+          <div className="group">
+            <label className="text-xs text-gray-600">Refinance:</label>
+            <select
+              className="ipt ipt-sm"
+              value={refinanceBehavior}
+              onChange={(e)=>onChangeRefiBehavior(e.target.value)}
+              aria-label="Refinance behavior"
+            >
+              <option value="none">ไม่รีไฟแนนซ์</option>
+              <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
+              <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
+            </select>
+          </div>
 
-    <DropdownMulti
-      label="เลือกธนาคาร (กราฟ)"
-      options={banks}
-      valueIds={selectedIds}
-      onToggle={toggleSelect}
-      max={3}
-    />
+          <DropdownMulti
+            label="เลือกธนาคาร (กราฟ)"
+            options={banks}
+            valueIds={selectedIds}
+            onToggle={toggleSelect}
+            max={3}
+          />
 
-    <div className="group">
-      <label className="text-xs text-gray-600">โหมดกราฟ:</label>
-      <select
-        className="ipt ipt-sm"
-        value={graphMode}
-        onChange={e=>setGraphMode(e.target.value)}
-        aria-label="Graph mode"
-      >
-        <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
-        <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
-      </select>
-    </div>
+          <div className="group">
+            <label className="text-xs text-gray-600">โหมดกราฟ:</label>
+            <select
+              className="ipt ipt-sm"
+              value={graphMode}
+              onChange={e=>setGraphMode(e.target.value)}
+              aria-label="Graph mode"
+            >
+              <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
+              <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
+            </select>
+          </div>
 
-    <div className="group">
-      <label className="text-xs text-gray-600">ลงทุนเพิ่ม (%)</label>
-      <input
-        className="ipt ipt-num ipt-sm mono"
-        style={{width:90}}
-        placeholder="เช่น 5"
-        defaultValue={overridePrepayPct}
-        onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}
-      />
-    </div>
+          <div className="group">
+            <label className="text-xs text-gray-600">ลงทุนเพิ่ม (%)</label>
+            <input
+              className="ipt ipt-num ipt-sm mono"
+              style={{width:90}}
+              placeholder="เช่น 5"
+              defaultValue={overridePrepayPct}
+              onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}
+            />
+          </div>
 
-    <div className="group">
-      <label className="text-xs text-gray-600">เพดาน/เดือน (บาท)</label>
-      <input
-        className="ipt ipt-num ipt-sm mono"
-        style={{width:140}}
-        placeholder="เช่น 16000"
-        defaultValue={monthlyCap}
-        onBlur={(e)=> setMonthlyCap(e.target.value.trim())}
-      />
-    </div>
+          <div className="group">
+            <label className="text-xs text-gray-600">เพดาน/เดือน (บาท)</label>
+            <input
+              className="ipt ipt-num ipt-sm mono"
+              style={{width:140}}
+              placeholder="เช่น 16000"
+              defaultValue={monthlyCap}
+              onBlur={(e)=> setMonthlyCap(e.target.value.trim())}
+            />
+          </div>
 
-    <div className="group">
-      <label className="text-xs text-gray-600">คาดหวังผลตอบแทน/ปี (%)</label>
-      <input
-        className="ipt ipt-num ipt-sm mono"
-        style={{width:90}}
-        placeholder="5–8"
-        defaultValue={expectReturn}
-        onBlur={(e)=> setExpectReturn(e.target.value.trim())}
-      />
-    </div>
+          <div className="group">
+            <label className="text-xs text-gray-600">คาดหวังผลตอบแทน/ปี (%)</label>
+            <input
+              className="ipt ipt-num ipt-sm mono"
+              style={{width:90}}
+              placeholder="5–8"
+              defaultValue={expectReturn}
+              onBlur={(e)=> setExpectReturn(e.target.value.trim())}
+            />
+          </div>
 
-    <button
-      className="btn-secondary ipt-sm"
-      onClick={exportCSV}
-      title="ส่งออกข้อมูลการลงทุน"
-      aria-label="Export investment"
-    >
-      Export
-    </button>
+          <button
+            className="btn-secondary ipt-sm"
+            onClick={exportCSV}
+            title="ส่งออกข้อมูลการลงทุน"
+            aria-label="Export investment"
+          >
+            Export
+          </button>
 
-    <button
-      className="btn ipt-sm"
-      onClick={()=>setShowChart(true)}
-      title="ดูกราฟเปรียบเทียบ"
-      aria-label="Open chart"
-    >
-      ดูกราฟ
-    </button>
-  </div>
-</div>
+          <button
+            className="btn ipt-sm"
+            onClick={()=>setShowChart(true)}
+            title="ดูกราฟเปรียบเทียบ"
+            aria-label="Open chart"
+          >
+            ดูกราฟ
+          </button>
+        </div>
+      </div>
 
       {/* ตาราง */}
       <div className="table-wrap sticky-first" style={{ maxHeight:"75vh" }}>
@@ -757,6 +763,17 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                   <Td className="sub-label first-col">กำไรลงทุนสะสม</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`profit-${di}-${i}`} className="text-right mono">{fmtMoney(d.chartSeries.profit[i]||0)}</Td>))}
                 </tr>
+
+                {/* แถวใหม่: Net Investment (ลงทุนสุทธิ) */}
+                <tr>
+                  <Td className="sub-label first-col">Net Investment (ลงทุนสุทธิ) = มูลค่าพอร์ต − ดอกเบี้ยที่เสียไป</Td>
+                  {Array.from({length:maxYears},(_,i)=>{
+                    const val = d.years[i]?.netInvestment ?? 0;
+                    const cls = val>=0 ? "net-pos" : "net-neg";
+                    return (<Td key={`net-${di}-${i}`} className={`text-right mono`}><span className={cls}>{fmtMoney(val)}</span></Td>);
+                  })}
+                </tr>
+
                 <tr><Td colSpan={maxYears+1} style={{height:6}}></Td></tr>
               </React.Fragment>
             ))}
@@ -765,9 +782,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       </div>
 
       <div className="text-xs text-gray-500">
-        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
-        โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
-        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
+        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน (ระบบจะลดเงินลงทุนให้ไม่เกิน Cap) •
+        Net Investment = มูลค่าพอร์ต ณ สิ้นปี − ดอกเบี้ยสะสม (กรณีมีโปะ) •
+        โหมดกราฟ “ประหยัดดอกสะสม” มี Base = 0 ตามนิยาม
       </div>
 
       {showChart && (
@@ -1013,7 +1030,7 @@ const IconPlus=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 function App(){
   const [banks, setBanks]=useLocalState("mortgage-banks", DEFAULT_BANKS);
   const [route, setRoute]=useState(window.location.hash||"#/");
-  const [focusCompare, setFocusCompare]=useState(false);
+  the [focusCompare, setFocusCompare]=useState(false);
   const [refinanceBehavior, setRefinanceBehavior]=useState("none");
   const fileRef=React.useRef(null);
 
