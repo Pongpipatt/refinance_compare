@@ -26,6 +26,7 @@ body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubu
 }
 .btn{ background:#111827; color:#fff; border:0; cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn:hover{ background:#1f2937 } .btn:active{ background:#374151; transform:translateY(1px); }
+.btn:focus-visible,.btn-secondary:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; }
 .btn-secondary{ background:#fff; color:#1f2937; border:1px solid var(--gray-300); cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn-secondary:hover{ background:#f9fafb } .btn-secondary:active{ background:#f3f4f6; transform:translateY(1px); }
 
@@ -73,3 +74,33 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 /* หน้ามุมมองลงทุน: เต็มกว้าง */
 .invest-wrap{ width:100%; margin:0; }
 .invest-head{ font-weight:700; font-size:1.05rem; padding-left:.25rem; }
+
+/* --- Sticky first column (Investment grid) --- */
+.sticky-first table thead th:first-child,
+.sticky-first table tbody td:first-child{
+  position: sticky; left: 0; background:#fff; z-index:1;
+  box-shadow: 2px 0 0 0 var(--gray-200);
+}
+.sticky-first table thead th:first-child{ z-index:3; }
+
+/* แถวคั่นระหว่างธนาคาร */
+.bank-divider td{
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-weight:600;
+}
+
+/* ป้ายย่อยในคอลัมน์ซ้าย */
+.sub-label{ font-weight:600; color:#374151; }
+
+/* Dropdown panel (แบบเดียวกับ panel อื่น) */
+.dropdown{ position:relative; }
+.dropdown-menu{
+  position:absolute; top:calc(100% + 6px); left:0;
+  background:#fff; border:1px solid var(--gray-200); border-radius:10px;
+  padding:.5rem; box-shadow:0 8px 20px rgba(0,0,0,.08);
+  min-width:280px; z-index:30;
+}
+.dropdown-menu .item{ display:flex; align-items:center; gap:.5rem; padding:.25rem .25rem; }
+.dropdown-menu .item input{ width:16px; height:16px; }
+.dropdown-footer{ border-top:1px solid var(--gray-200); margin-top:.35rem; padding-top:.35rem; font-size:.75rem; color:#6b7280; }
