@@ -13,8 +13,7 @@ function formatMoneyInput(v){ if(v===""||v==null) return ""; return fmtMoney(v);
 
 /* IRR helpers (ใช้ในหน้า Pro Analysis เท่านั้น) */
 function irrMonthly(cashflows){
-  // cashflows: [{t:0..N, cf:Number}]
-  let lo=-0.99, hi=1.0; // monthly rate range
+  let lo=-0.99, hi=1.0;
   const npv=(r)=> cashflows.reduce((s,x)=> s + x.cf/Math.pow(1+r, x.t), 0);
   for(let n=0;n<200;n++){
     const mid=(lo+hi)/2, v=npv(mid);
@@ -26,20 +25,18 @@ function irrMonthly(cashflows){
 const yearize=(rm)=> (Math.pow(1+rm,12)-1);
 
 /* ========== Core amortization ========== */
-/** คำนวณแบบ "ตรึงค่างวดในแต่ละช่วงดอก" (ค่าเริ่มต้น) */
 function buildSchedule({
   principal,
   termMonths,
-  rateSchedule,                 // [{months:12, rateYear:...}, ...]
+  rateSchedule,
   monthlyPaymentOverride = null,
-  prepayPct = 0,                // โปะเพิ่มเป็น % ของค่างวด
-  capPerMonth = null,           // เพดาน (ค่างวด+โปะ/ลงทุน) ต่อเดือน
-  installmentMode = "fixPerBlock" // เผื่ออนาคต (ตอนนี้ใช้ fixPerBlock)
+  prepayPct = 0,
+  capPerMonth = null,
+  installmentMode = "fixPerBlock"
 }){
   let balance = principal;
   const rows = [];
 
-  // กระจายเดือน + หมายเลขบล็อก
   const months=[];
   for(let bi=0; bi<rateSchedule.length; bi++){
     const {months:mCnt, rateYear} = rateSchedule[bi];
@@ -52,11 +49,9 @@ function buildSchedule({
     const curBlock = months[i].blockIndex;
     const r = (months[i].rYear/100)/12;
 
-    // ความยาวบล็อกจากตำแหน่งปัจจุบัน
     let blockLen=0; for(let j=i;j<months.length;j++){ if(months[j].blockIndex!==curBlock) break; blockLen++; }
     let remaining = months.length - i;
 
-    // PMT ตรึงในบล็อก (คำนวณจาก "ยอดคงเหลือ" และ "อายุสัญญาที่เหลือ")
     const basePay = monthlyPaymentOverride
       ? monthlyPaymentOverride
       : (r===0 ? balance/remaining : (balance*r*Math.pow(1+r,remaining))/(Math.pow(1+r,remaining)-1));
@@ -65,7 +60,6 @@ function buildSchedule({
       const interest = balance * r;
       let principalPay = Math.max(0, basePay - interest);
 
-      // โปะจาก % ของค่างวด
       const desiredExtra = Math.max(0, basePay*(prepayPct/100));
       let allowedExtra = desiredExtra, extraCapped=false;
       if(capPerMonth && capPerMonth>0){
@@ -103,9 +97,9 @@ function sumOtherCosts(otherCosts){ return Object.values(otherCosts||{}).reduce(
 
 /* ========== คำนวณ "ลงทุนรายเดือน+ทบต้นรายเดือน" ========== */
 function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expectReturnYear){
-  const rM = Math.pow(1 + (Number(expectReturnYear||0)/100), 1/12) - 1; // ผลตอบแทน/เดือน
-  let investValue = 0;   // มูลค่าพอร์ต ณ สิ้นเดือน
-  let cumInvest   = 0;   // เงินต้นที่ลงสะสม
+  const rM = Math.pow(1 + (Number(expectReturnYear||0)/100), 1/12) - 1;
+  let investValue = 0;
+  let cumInvest   = 0;
   const perYear   = [];
   let capHitThisYear = false;
 
@@ -119,7 +113,6 @@ function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expect
       if(desired > room + 1e-9){ allowed = room; capHitThisYear = true; }
     }
 
-    // เติมเงินก้อนเดือนนี้ก่อน แล้วค่อยปิดเดือนด้วยดอก/เดือน
     investValue += allowed;
     cumInvest   += allowed;
     investValue *= (1 + rM);
@@ -161,7 +154,6 @@ function RateInput({ value, onChange }){
 
 /* ========== Defaults ========== */
 const DEFAULT_BANKS = [
-  // ยกเลิก default monthlyOverride เพื่อให้ค่างวดเปลี่ยนตามบล็อกดอกอัตโนมัติ
   { id: genId(), name:"กรุงศรี (ปัจจุบัน)", principal:2623000, termYears:20, rate1:5.37, rate2:5.37, rate3:5.37, rateAfter:5.37, monthlyOverride:null, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":0,"ค่าปรับปิดก่อน":0 } },
   { id: genId(), name:"ออมสิน (โปร Q3/2568)", principal:2623000, termYears:20, rate1:1.99, rate2:3.805, rate3:3.805, rateAfter:6.37, monthlyOverride:null, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":1000,"ค่าปรับปิดก่อน":0 } },
 ];
@@ -243,7 +235,6 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
     const int5y=first60.reduce((s,r)=>s+r.interest,0), prepay5y=first60.reduce((s,r)=>s+(r.extraPrepay||0),0);
     const other=sumOtherCosts(b.otherCosts), total3y=int3y+other, total5y=int5y+other;
 
-    // ทำ "ขั้นบันไดค่างวด" จากการเปลี่ยนอัตราดอกแต่ละบล็อก
     const stepPays=[]; let lastPay=null;
     for(const r of schedule.rows){
       const pay=Math.round(r.payment);
@@ -414,25 +405,49 @@ function ScheduleView({ bank, refinanceBehavior }){
 }
 
 /* ========== Dropdown Multi (Investment) ========== */
-function useOnClickOutside(ref, handler){
-  useEffect(()=>{ 
-    const listener=(e)=>{ if(!ref.current || ref.current.contains(e.target)) return; handler(e); };
-    document.addEventListener('mousedown', listener); document.addEventListener('touchstart', listener);
-    return ()=>{ document.removeEventListener('mousedown', listener); document.removeEventListener('touchstart', listener); };
-  },[ref, handler]);
-}
+/* ใช้ Portal + position:fixed เพื่อไม่ให้โดนครอบเวลามี overflow-x บน toolbar */
 function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
-  const [open, setOpen]=useState(false); const ref=useRef(null);
-  useOnClickOutside(ref, ()=> setOpen(false));
+  const [open, setOpen]=useState(false);
+  const anchorRef=useRef(null);
+  const menuRef=useRef(null);
+  const [pos, setPos]=useState({left:0, top:0, width:280});
+
   const selected=options.filter(o=>valueIds.includes(o.id));
   const title = selected.length ? `${label}: ${selected.map(s=>s.name).join(", ").slice(0,60)}${selected.map(s=>s.name).join(", ").length>60?"…":""}` : label;
+
+  const recalc = ()=> {
+    if(!anchorRef.current) return;
+    const r=anchorRef.current.getBoundingClientRect();
+    setPos({ left: r.left + window.scrollX, top: r.bottom + window.scrollY + 6, width: Math.max(280, r.width) });
+  };
+
+  useEffect(()=>{ if(!open) return;
+    recalc();
+    const onDown=(e)=>{ 
+      if(anchorRef.current?.contains(e.target)) return;
+      if(menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onScroll=()=>recalc();
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scroll", onScroll, true);
+    return ()=>{ 
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open]);
+
   return (
-    <div className="dropdown" ref={ref}>
-      <button className="btn-secondary ipt-sm" onClick={()=>setOpen(v=>!v)} title={title} aria-haspopup="listbox" aria-expanded={open}>
+    <div className="dropdown">
+      <button ref={anchorRef} className="btn-secondary ipt-sm" onClick={()=>setOpen(v=>!v)} title={title} aria-haspopup="listbox" aria-expanded={open}>
         {selected.length? `${label} (${selected.length}/${max})` : label}
       </button>
-      {open && (
-        <div className="dropdown-menu" role="listbox">
+
+      {open && ReactDOM.createPortal(
+        <div ref={menuRef} className="dropdown-menu"
+             style={{ position:"fixed", left:pos.left+"px", top:pos.top+"px", minWidth:pos.width+"px", zIndex:9999 }}>
           {options.map(opt=>{
             const checked=valueIds.includes(opt.id); const disabled=!checked && valueIds.length>=max;
             return (
@@ -444,12 +459,12 @@ function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
           })}
           <div className="dropdown-footer">เลือกได้สูงสุด {max} ธนาคารสำหรับกราฟ</div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }
 
-/* ========== Investment View (คงเดิม) ========== */
+/* ========== Investment View (คงเดิม + ปรับกราฟโหมดที่ 2) ========== */
 function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   const [overridePrepayPct, setOverridePrepayPct] = useState("");
   const [monthlyCap, setMonthlyCap] = useState("");
@@ -468,24 +483,20 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     const pctUse = (overridePrepayPct===""? (b.prepayPct||0) : Number(overridePrepayPct||0));
     const cap = Number(monthlyCap||0);
 
-    // ตาราง "โปะจริง"
     const schedWith = buildSchedule({
       principal:b.principal, termMonths,
       rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior),
       monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse, capPerMonth: cap>0? cap: null, installmentMode:"fixPerBlock"
     });
 
-    // ตาราง "ไม่โปะ" (ฐานคำนวณผลประหยัดดอก และฐานเงินไปลงทุน)
     const schedBase = buildSchedule({
       principal:b.principal, termMonths,
       rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior),
       monthlyPaymentOverride:b.monthlyOverride, prepayPct:0, capPerMonth:null, installmentMode:"fixPerBlock"
     });
 
-    // ลงทุนรายเดือน + ทบต้นรายเดือน
     const investSeries = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
 
-    // รวมเป็นรายปี
     const years=Math.max(Math.ceil(schedWith.rows.length/12), Math.ceil(schedBase.rows.length/12));
     const perYear=[]; let cumInterestWith=0, cumInterestBase=0;
 
@@ -498,8 +509,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 
       perYear.push({
         yearIndex: y+1,
-        cumInterestWith,        // ดอกเบี้ยรวมสะสม (โปะ)
-        cumInterestBase,        // ดอกเบี้ยรวมสะสม (ไม่โปะ)
+        cumInterestWith,
+        cumInterestBase,
         cumInvest: invY.cumInvest,
         investValue: invY.investValue,
         investProfit: invY.investProfit,
@@ -508,18 +519,18 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       });
     }
 
-    // series สำหรับกราฟ
     let cumSaved=0;
-    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[];
+    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[];
     perYear.forEach(y=>{
       cumSaved += y.savedInterestYear;
       seriesSaved.push(cumSaved);
       seriesProfit.push(y.investProfit);
       seriesTotWith.push(y.cumInterestWith);
       seriesTotBase.push(y.cumInterestBase);
+      seriesVal.push(y.investValue);
     });
 
-    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase } };
+    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal } };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
   const maxYears = Math.max(0, ...calcData.map(d=>d.years.length));
@@ -539,11 +550,10 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         series.push(d.chartSeries.saved);  labels.push(`${d.name} — ดอกเบี้ยที่ประหยัดสะสม`); colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.profit); labels.push(`${d.name} — กำไรลงทุนสะสม`);     colors.push(colorPairs[idx%colorPairs.length][1]);
       });
-    }else{ // 'total'
+    }else{ // 'total' : ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน
       selected.forEach((d,idx)=>{
-        series.push(d.chartSeries.totBase); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม (ไม่โปะ)`); colors.push("#6b7280");
-        series.push(d.chartSeries.totWith); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม (มีโปะ)`); colors.push(colorPairs[idx%colorPairs.length][0]);
-        series.push(d.chartSeries.profit);  labels.push(`${d.name} — กำไรลงทุนสะสม`);       colors.push(colorPairs[idx%colorPairs.length][1]);
+        series.push(d.chartSeries.totWith); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม`);    colors.push(colorPairs[idx%colorPairs.length][0]);
+        series.push(d.chartSeries.val);     labels.push(`${d.name} — มูลค่าพอร์ตลงทุน`);    colors.push(colorPairs[idx%colorPairs.length][1]);
       });
     }
 
@@ -553,7 +563,6 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       const pad=40*dpi, plotW=W-pad*2, plotH=H-pad*2;
       ctx.clearRect(0,0,W,H); ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
 
-      // grid
       ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1; ctx.fillStyle="#6b7280"; ctx.font=`${12*dpi}px sans-serif`;
       for(let i=0;i<=5;i++){
         const y=pad + plotH*(i/5);
@@ -569,15 +578,13 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       series.forEach((arr,si)=>{
         ctx.beginPath();
         arr.forEach((v,i)=>{ const x=xOf(i,arr.length), y=yOf(v); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-        ctx.strokeStyle=colors[si]; ctx.lineWidth= si%3===0 && graphMode==="total" ? 1.2*dpi : 2*dpi;
+        ctx.strokeStyle=colors[si]; ctx.lineWidth=2*dpi;
         ctx.stroke();
       });
 
-      // Legend
-      const colW=360*dpi, startX=W-pad-colW, startY=pad;
+      const colW=380*dpi, startX=W-pad-colW, startY=pad;
       labels.forEach((lb,i)=>{ const y=startY + i*16*dpi; ctx.fillStyle=colors[i]; ctx.fillRect(startX,y,10*dpi,10*dpi); ctx.fillStyle="#111827"; ctx.fillText(lb, startX+14*dpi, y+10*dpi); });
 
-      // Hover
       if(hoverI!==null){
         const xh=xOf(hoverI, series[0].length);
         ctx.strokeStyle="#9ca3af"; ctx.setLineDash([4*dpi,4*dpi]);
@@ -641,7 +648,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <label className="text-xs text-gray-600">โหมดกราฟ:</label>
           <select className="ipt ipt-sm" value={graphMode} onChange={e=>setGraphMode(e.target.value)} aria-label="Graph mode">
             <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
-            <option value="total">ดอกเบี้ยรวมสะสม ↔ กำไรลงทุน</option>
+            <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
           </select>
         </div>
 
@@ -669,7 +676,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         <table className="text-sm">
           <thead>
             <tr>
-              <Th>ธนาคาร / รายการ</Th>
+              <Th className="first-col">ธนาคาร / รายการ</Th>
               {Array.from({length:maxYears},(_,i)=>(<Th key={i} className="text-right year-col">ปีที่ {i+1}</Th>))}
             </tr>
           </thead>
@@ -680,23 +687,23 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                 {di===0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}</Td></tr>}
 
                 <tr>
-                  <Td className="sub-label">ดอกเบี้ยรวมสะสม (กรณีมีโปะ)</Td>
+                  <Td className="sub-label first-col">ดอกเบี้ยรวมสะสม (กรณีมีโปะ)</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`ci-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestWith||0)}</Td>))}
                 </tr>
                 <tr>
-                  <Td className="sub-label">ดอกเบี้ยรวมสะสม (ไม่โปะ)</Td>
+                  <Td className="sub-label first-col">ดอกเบี้ยรวมสะสม (ไม่โปะ)</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`cib-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestBase||0)}</Td>))}
                 </tr>
                 <tr>
-                  <Td className="sub-label">เงินต้นลงทุนสะสม (ยอดลงทุนรายเดือน)</Td>
+                  <Td className="sub-label first-col">เงินต้นลงทุนสะสม (ยอดลงทุนรายเดือน)</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`cumInv-${di}-${i}`} className={`text-right mono ${d.years[i]?.capHitInvest?"cap-alert":""}`}>{fmtMoney(d.years[i]?.cumInvest||0)}</Td>))}
                 </tr>
                 <tr>
-                  <Td className="sub-label">มูลค่าพอร์ตลงทุน (สิ้นปี)</Td>
+                  <Td className="sub-label first-col">มูลค่าพอร์ตลงทุน (สิ้นปี)</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`val-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investValue||0)}</Td>))}
                 </tr>
                 <tr>
-                  <Td className="sub-label">กำไรลงทุนสะสม (แสดงในกราฟ)</Td>
+                  <Td className="sub-label first-col">กำไรลงทุนสะสม</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`profit-${di}-${i}`} className="text-right mono">{fmtMoney(d.chartSeries.profit[i]||0)}</Td>))}
                 </tr>
                 <tr><Td colSpan={maxYears+1} style={{height:6}}></Td></tr>
@@ -709,7 +716,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       <div className="text-xs text-gray-500">
         * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
         โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
-        โหมด “ดอกเบี้ยรวมสะสม” ทำให้กราฟสอดคล้องกับตัวเลขในตารางรวมดอกเบี้ย
+        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
       </div>
 
       {showChart && (
@@ -717,7 +724,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <div className="chart-box" onClick={(e)=>e.stopPropagation()}>
             <div className="chart-head">
               <div className="font-semibold">
-                กราฟเทียบหลายธนาคาร (แกน Y = บาท, แกน X = ปี) — โหมด: {graphMode==="saved"?"ประหยัดดอกสะสม":"ดอกเบี้ยรวมสะสม"}
+                กราฟเทียบหลายธนาคาร (แกน Y = บาท, แกน X = ปี) — โหมด: {graphMode==="saved"?"ประหยัดดอกสะสม ↔ กำไรลงทุน":"ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน"}
               </div>
               <button className="focus-close" onClick={()=>setShowChart(false)}>✕ ปิด</button>
             </div>
@@ -729,7 +736,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   );
 }
 
-/* ========== Pro Analysis (หน้าใหม่) ========== */
+/* ========== Pro Analysis (คงเดิม) ========== */
 function CompareTablePro({ banks, refinanceBehavior, settings }){
   const rows = useMemo(()=>{
     const planned0=Math.round((banks[0]?.termYears||0)*12) || 0;
@@ -747,9 +754,8 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
         monthlyPaymentOverride:b.monthlyOverride, prepayPct:b.prepayPct||0, installmentMode:"fixPerBlock"
       });
 
-      // ค่าธรรมเนียมรีไฟฯตามรอบ + ปรับปิดก่อนช่วง lock-in
       const cycleMonths = refinanceBehavior==="every3y" ? 36 : refinanceBehavior==="every5y" ? 60 : 0;
-      let refiCostsByMonth = new Map(); // month -> fee
+      let refiCostsByMonth = new Map();
       if(cycleMonths>0){
         for(let m=cycleMonths; m<=sched.rows.length; m+=cycleMonths){
           let fee = Number(settings.refiFeePerCycle||0);
@@ -762,7 +768,6 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
         }
       }
 
-      // ภาษี/ลดหย่อนดอกบ้าน (ประมาณการ)
       const otherBase = sumOtherCosts(b.otherCosts);
       let taxBenefit3y=0, taxBenefit5y=0; 
       if(settings.applyMortgageDeduction){
@@ -780,10 +785,9 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
       const total3y = int3y + otherBase - taxBenefit3y;
       const total5y = int5y + otherBase - taxBenefit5y;
 
-      // Break-even เทียบกับธนาคารฐาน (index 0)
       let breakEvenMonth = null;
       if(idx>0 && baseSched.rows.length){
-        let cumSaved=0, cumCost=otherBase; // ต้นทุนตั้งต้น
+        let cumSaved=0, cumCost=otherBase;
         for(let m=1;m<=Math.min(baseSched.rows.length, sched.rows.length);m++){
           const saved = Math.max(0,(baseSched.rows[m-1]?.interest||0)-(sched.rows[m-1]?.interest||0));
           cumSaved += saved;
@@ -792,9 +796,8 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
         }
       }
 
-      // EIR/IRR — กระแสเงินสด
       const flows=[];
-      flows.push({t:0, cf:+b.principal - otherBase}); // เงินได้สุทธิ T0
+      flows.push({t:0, cf:+b.principal - otherBase});
       sched.rows.forEach((r,i)=>{ 
         let out = r.payment + (r.extraPrepay||0);
         const add = refiCostsByMonth.get(i+1); if(add) out += add;
@@ -802,7 +805,6 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
       });
       const eir = yearize(irrMonthly(flows));
 
-      // ขั้นบันไดยอดผ่อน (เพื่ออ้างอิง)
       const stepPays=[]; let lastPay=null;
       for(const r of sched.rows){
         const pay=Math.round(r.payment); 
@@ -876,7 +878,6 @@ function DSRBadge({ pct }){
   return <span className={`dsr ${cls}`}>DSR: {label}</span>;
 }
 
-/* หน้า Pro Analysis */
 function ProAnalysis({ banks, refinanceBehavior, onBack }){
   const [settings, setSettings]=useState({
     refiFeePerCycle:0, lockinMonths:0, preclosePenaltyPct:0,
@@ -884,7 +885,6 @@ function ProAnalysis({ banks, refinanceBehavior, onBack }){
     incomeNet:0, otherDebt:0
   });
 
-  // DSR (ธนาคารแรกเป็นฐานค่างวดสูงสุด)
   const dsrInfo = useMemo(()=>{
     if(!banks[0]) return {pct:0};
     const planned=Math.round(banks[0].termYears*12);
@@ -955,7 +955,6 @@ function useLocalState(key, initial){
   return [state, setState];
 }
 
-/* ไอคอน */
 const IconDownload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M3 21h18"/></svg>);
 const IconUpload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 21V9m0 0l4 4m-4-4l-4 4"/><path d="M3 3h18"/></svg>);
 const IconPlus=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>);
@@ -1010,7 +1009,6 @@ function App(){
           </div>
         </div>
 
-        {/* ขวาบน: เฉพาะหน้า Home เท่านั้น (ไม่ซ้ำกับหน้าอื่น) */}
         {!isSchedule && !isInvest && !isAnalysis && (
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Refinance:</label>
@@ -1031,7 +1029,7 @@ function App(){
         )}
       </div>
 
-      {/* หน้าเปรียบเทียบหลัก (คงเดิม) */}
+      {/* หน้าเปรียบเทียบหลัก */}
       {!isSchedule && !isInvest && !isAnalysis && (
         <div className="space-y-6">
           <div className="space-y-4">
@@ -1047,7 +1045,7 @@ function App(){
         </div>
       )}
 
-      {/* Investment (เต็มกว้าง) */}
+      {/* Investment */}
       {isInvest && (
         <div className="space-y-4">
           <div className="flex items-center"><button className="btn-secondary ipt-sm" onClick={goHome} aria-label="Back">← กลับ</button></div>
@@ -1060,7 +1058,7 @@ function App(){
         <ProAnalysis banks={banks} refinanceBehavior={refinanceBehavior} onBack={goHome} />
       )}
 
-      {/* ตารางงวดรายเดือน */}
+      {/* Schedule */}
       {isSchedule && banks[scheduleIndex] && (
         <div className="space-y-4">
           <button className="btn-secondary ipt-sm" onClick={goHome} aria-label="Back">← กลับ</button>
