@@ -20,7 +20,7 @@ function buildSchedule({
   monthlyPaymentOverride = null,
   prepayPct = 0,                // โปะเพิ่มเป็น % ของค่างวด
   capPerMonth = null,           // เพดาน (ค่างวด+โปะ/ลงทุน) ต่อเดือน
-  installmentMode = "fixPerBlock" // เผื่ออนาคต (ตอนนี้ใช้ fixPerBlock)
+  installmentMode = "fixPerBlock" // มีไว้เผื่ออนาคต (ตอนนี้ใช้ fixPerBlock)
 }){
   let balance = principal;
   const rows = [];
@@ -42,7 +42,7 @@ function buildSchedule({
     let blockLen=0; for(let j=i;j<months.length;j++){ if(months[j].blockIndex!==curBlock) break; blockLen++; }
     let remaining = months.length - i;
 
-    // PMT ตรึงในบล็อก (คำนวณจาก "ยอดคงเหลือ" และ "อายุสัญญาที่เหลือ")
+    // PMT ตรึงในบล็อก
     const basePay = monthlyPaymentOverride
       ? monthlyPaymentOverride
       : (r===0 ? balance/remaining : (balance*r*Math.pow(1+r,remaining))/(Math.pow(1+r,remaining)-1));
@@ -51,7 +51,7 @@ function buildSchedule({
       const interest = balance * r;
       let principalPay = Math.max(0, basePay - interest);
 
-      // โปะจาก % ของค่างวด
+      // ต้องการโปะจาก % ของค่างวด
       const desiredExtra = Math.max(0, basePay*(prepayPct/100));
       let allowedExtra = desiredExtra, extraCapped=false;
       if(capPerMonth && capPerMonth>0){
@@ -147,8 +147,7 @@ function RateInput({ value, onChange }){
 
 /* ========== Defaults ========== */
 const DEFAULT_BANKS = [
-  // ยกเลิก default monthlyOverride เพื่อให้ค่างวดเปลี่ยนตามบล็อกดอกอัตโนมัติ
-  { id: genId(), name:"กรุงศรี (ปัจจุบัน)", principal:2623000, termYears:20, rate1:5.37, rate2:5.37, rate3:5.37, rateAfter:5.37, monthlyOverride:null, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":0,"ค่าปรับปิดก่อน":0 } },
+  { id: genId(), name:"กรุงศรี (ปัจจุบัน)", principal:2623000, termYears:20, rate1:5.37, rate2:5.37, rate3:5.37, rateAfter:5.37, monthlyOverride:15700, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":0,"ค่าปรับปิดก่อน":0 } },
   { id: genId(), name:"ออมสิน (โปร Q3/2568)", principal:2623000, termYears:20, rate1:1.99, rate2:3.805, rate3:3.805, rateAfter:6.37, monthlyOverride:null, prepayPct:0.0, otherCosts:{ MRTA:0,"ค่าประเมิน":0,"ค่าจดจำนอง":0,"ค่าธรรมเนียม":1000,"ค่าปรับปิดก่อน":0 } },
 ];
 
@@ -186,9 +185,9 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
       <div className="flex items-center justify-between mb-2">
         <input className="text-lg font-semibold outline-none border-b border-gray-300 px-1 bg-transparent" value={bank.name} onChange={e=>handle("name", e.target.value)} />
         <div className="flex items-center gap-2">
-          <button className="btn-secondary" onClick={onMoveUp} title="ย้ายขึ้น" aria-label="Move up">↑ ย้ายขึ้น</button>
-          <button className="btn-secondary" onClick={onMoveDown} title="ย้ายลง" aria-label="Move down">↓ ย้ายลง</button>
-          <button className="btn-secondary" onClick={onRemove} title="ลบธนาคาร" aria-label="Remove bank">ลบธนาคาร</button>
+          <button className="btn-secondary" onClick={onMoveUp} title="ย้ายขึ้น">↑ ย้ายขึ้น</button>
+          <button className="btn-secondary" onClick={onMoveDown} title="ย้ายลง">↓ ย้ายลง</button>
+          <button className="btn-secondary" onClick={onRemove} title="ลบธนาคาร">ลบธนาคาร</button>
         </div>
       </div>
 
@@ -227,30 +226,8 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
     const payoffMonths=schedule.rows.length, first36=schedule.rows.slice(0,36), first60=schedule.rows.slice(0,60);
     const int3y=first36.reduce((s,r)=>s+r.interest,0), prepay3y=first36.reduce((s,r)=>s+(r.extraPrepay||0),0);
     const int5y=first60.reduce((s,r)=>s+r.interest,0), prepay5y=first60.reduce((s,r)=>s+(r.extraPrepay||0),0);
-    const other=sumOtherCosts(b.otherCosts), total3y=int3y+other, total5y=int5y+other;
-
-    // ทำ "ขั้นบันไดค่างวด" จากการเปลี่ยนอัตราดอกแต่ละบล็อก
-    const stepPays=[];
-    let lastPay=null;
-    for(const r of schedule.rows){
-      const pay=Math.round(r.payment); // ปัดเพื่อจับการเปลี่ยน
-      if(lastPay===null || Math.abs(pay-lastPay)>1){
-        stepPays.push(pay);
-        lastPay=pay;
-      }
-      // พอเกิน 4 ช่วงก็พอสำหรับการแสดง
-      if(stepPays.length>=4) break;
-    }
-    const stepText = stepPays.map(v=>fmtMoney(v)).join(" → ");
-
-    return {
-      id:b.id, index:idx, name:b.name,
-      stepText,
-      prepay3y, interest3y:int3y, total3y,
-      prepay5y, interest5y:int5y, total5y,
-      after3yRate:b.rateAfter, payoffMonths,
-      totalInterestAll:schedule.totalInterest, otherCosts:other
-    };
+    const other=sumOtherCosts(b.otherCosts), total3y=int3y+other, total5y=int5y+other, estMonthly=first36[0]?.payment||0;
+    return { id:b.id, index:idx, name:b.name, monthly:estMonthly, prepay3y, interest3y:int3y, total3y, prepay5y, interest5y:int5y, total5y, after3yRate:b.rateAfter, payoffMonths, totalInterestAll:schedule.totalInterest, otherCosts:other };
   }), [banks, refinanceBehavior]);
 
   const currentBase = rows[0]?.total3y ?? null;
@@ -267,7 +244,7 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
         <thead>
           <tr>
             <Th>ธนาคาร</Th>
-            <Th className="text-right">ค่างวด/เดือน (ตามบล็อกดอก)</Th>
+            <Th className="text-right">ค่างวด/เดือน (ประมาณ)</Th>
             <Th className="text-right">โปะรวม 3 ปี</Th>
             <Th className="text-right">ดอกเบี้ยรวม 3 ปี</Th>
             <Th className="text-right">ค่าใช้จ่ายอื่น ๆ</Th>
@@ -288,7 +265,7 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
             return (
               <tr key={r.id}>
                 <Td>{r.name}</Td>
-                <Td className="text-right font-medium mono" title="ขั้นบันไดยอดผ่อนต่อเดือน">{r.stepText||"—"}</Td>
+                <Td className="text-right font-medium mono">{fmtMoney(r.monthly)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.prepay3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.interest3y)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.otherCosts)}</Td>
@@ -300,7 +277,7 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
                 <Td className="text-right font-semibold mono"><span className={cls5}>{fmtMoney(r.total5y)}</span></Td>
                 <Td className="text-right mono">{formatTerm(r.payoffMonths)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
-                <Td className="text-center"><button className="btn-secondary" onClick={()=>onOpenSchedule(r.index)} aria-label="Open schedule">ดูงวด</button></Td>
+                <Td className="text-center"><button className="btn-secondary" onClick={()=>onOpenSchedule(r.index)}>ดูงวด</button></Td>
               </tr>
             );
           })}
@@ -313,7 +290,7 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
     <div className="relative">
       <div className="flex items-center justify-between mb-2">
         <div className="text-lg font-semibold">สรุปเทียบ (3 ปี / 5 ปี)</div>
-        <button className="btn-secondary" title="ขยายเต็มจอ (Focus mode)" onClick={onToggleFocus} aria-label="Expand">⛶ ขยาย</button>
+        <button className="btn-secondary" title="ขยายเต็มจอ (Focus mode)" onClick={onToggleFocus}>⛶ ขยาย</button>
       </div>
       {table}
       {showFocus && (
@@ -395,7 +372,12 @@ function ScheduleView({ bank, refinanceBehavior }){
 
 /* ========== Dropdown Multi ========== */
 function useOnClickOutside(ref, handler){
-  useEffect(()=>{ const listener=(e)=>{ if(!ref.current || ref.current.contains(e.target)) return; handler(e); }; document.addEventListener('mousedown', listener); document.addEventListener('touchstart', listener); return ()=>{ document.removeEventListener('mousedown', listener); document.removeEventListener('touchstart', listener); }; },[ref, handler]);
+  useEffect(()=>{
+    const listener=(e)=>{ if(!ref.current || ref.current.contains(e.target)) return; handler(e); };
+    document.addEventListener('mousedown', listener);
+    document.addEventListener('touchstart', listener);
+    return ()=>{ document.removeEventListener('mousedown', listener); document.removeEventListener('touchstart', listener); };
+  },[ref, handler]);
 }
 function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   const [open, setOpen]=useState(false); const ref=useRef(null);
@@ -404,9 +386,11 @@ function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   const title = selected.length ? `${label}: ${selected.map(s=>s.name).join(", ").slice(0,60)}${selected.map(s=>s.name).join(", ").length>60?"…":""}` : label;
   return (
     <div className="dropdown" ref={ref}>
-      <button className="btn-secondary ipt-sm" onClick={()=>setOpen(v=>!v)} title={title} aria-haspopup="listbox" aria-expanded={open}>{selected.length? `${label} (${selected.length}/${max})` : label}</button>
+      <button className="btn-secondary ipt-sm" onClick={()=>setOpen(v=>!v)} title={title} aria-haspopup="listbox" aria-expanded={open}>
+        {selected.length? `${label} (${selected.length}/${max})` : label}
+      </button>
       {open && (
-        <div className="dropdown-menu" role="listbox">
+        <div className="dropdown-menu" role="listbox" aria-label="เลือกธนาคารบนกราฟ">
           {options.map(opt=>{
             const checked=valueIds.includes(opt.id); const disabled=!checked && valueIds.length>=max;
             return (
@@ -449,14 +433,14 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse, capPerMonth: cap>0? cap: null, installmentMode:"fixPerBlock"
     });
 
-    // ตาราง "ไม่โปะ" (ฐานคำนวณผลประหยัดดอก และฐานเงินไปลงทุน)
+    // ตาราง "ไม่โปะ" (ใช้เป็นฐานทั้งดอกเบี้ยรวม และฐานคำนวณเงินที่จะไปลงทุนแทน)
     const schedBase = buildSchedule({
       principal:b.principal, termMonths,
       rateSchedule:makeRateSchedule(b, termMonths, refinanceBehavior),
       monthlyPaymentOverride:b.monthlyOverride, prepayPct:0, capPerMonth:null, installmentMode:"fixPerBlock"
     });
 
-    // ลงทุนรายเดือน + ทบต้นรายเดือน
+    // ฝั่ง "เอาไปลงทุนแทน" = ลงทุนรายเดือน + ทบต้นรายเดือน
     const investSeries = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
 
     // รวมเป็นรายปี
@@ -634,8 +618,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <input className="ipt ipt-num ipt-sm mono" style={{width:90}} placeholder="5–8" defaultValue={expectReturn} onBlur={(e)=> setExpectReturn(e.target.value.trim())}/>
         </div>
 
-        <button className="btn-secondary ipt-sm" onClick={exportCSV} title="ส่งออกข้อมูลการลงทุน" aria-label="Export investment">Export</button>
-        <button className="btn ipt-sm" onClick={()=>setShowChart(true)} title="ดูกราฟเปรียบเทียบ" aria-label="Open chart">ดูกราฟ</button>
+        <button className="btn-secondary ipt-sm" onClick={exportCSV} title="ส่งออกข้อมูลการลงทุน (CSV)">Export CSV</button>
+        <button className="btn ipt-sm" onClick={()=>setShowChart(true)} title="ดูกราฟเปรียบเทียบ">ดูกราฟ</button>
       </div>
 
       {/* ตาราง */}
@@ -644,46 +628,34 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <thead>
             <tr>
               <Th>ธนาคาร / รายการ</Th>
-              {Array.from({length:maxYears},(_,i)=>(<Th key={i} className="text-right year-col">ปีที่ {i+1}</Th>))}
+              {Array.from({length:Math.max(0, ...calcData.map(d=>d.years.length))},(_,i)=>(<Th key={i} className="text-right year-col">ปีที่ {i+1}</Th>))}
             </tr>
           </thead>
           <tbody>
             {calcData.map((d,di)=>(
               <React.Fragment key={d.id}>
-                {di>0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}</Td></tr>}
-                {di===0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}</Td></tr>}
-
+                <tr className="bank-divider"><Td colSpan={Math.max(0, ...calcData.map(x=>x.years.length))+1}>{d.name}</Td></tr>
                 <tr>
                   <Td className="sub-label">ดอกเบี้ยรวมสะสม (กรณีมีโปะ)</Td>
-                  {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`ci-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestWith||0)}</Td>
-                  ))}
+                  {Array.from({length:d.years.length},(_,i)=>(<Td key={`ci-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestWith||0)}</Td>))}
                 </tr>
                 <tr>
                   <Td className="sub-label">ดอกเบี้ยรวมสะสม (ไม่โปะ)</Td>
-                  {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`cib-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestBase||0)}</Td>
-                  ))}
+                  {Array.from({length:d.years.length},(_,i)=>(<Td key={`cib-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.cumInterestBase||0)}</Td>))}
                 </tr>
                 <tr>
                   <Td className="sub-label">เงินต้นลงทุนสะสม (ยอดลงทุนรายเดือน)</Td>
-                  {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`cumInv-${di}-${i}`} className={`text-right mono ${d.years[i]?.capHitInvest?"cap-alert":""}`}>{fmtMoney(d.years[i]?.cumInvest||0)}</Td>
-                  ))}
+                  {Array.from({length:d.years.length},(_,i)=>(<Td key={`cumInv-${di}-${i}`} className={`text-right mono ${d.years[i]?.capHitInvest?"cap-alert":""}`}>{fmtMoney(d.years[i]?.cumInvest||0)}</Td>))}
                 </tr>
                 <tr>
                   <Td className="sub-label">มูลค่าพอร์ตลงทุน (สิ้นปี)</Td>
-                  {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`val-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investValue||0)}</Td>
-                  ))}
+                  {Array.from({length:d.years.length},(_,i)=>(<Td key={`val-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.investValue||0)}</Td>))}
                 </tr>
                 <tr>
                   <Td className="sub-label">กำไรลงทุนสะสม (แสดงในกราฟ)</Td>
-                  {Array.from({length:maxYears},(_,i)=>(
-                    <Td key={`profit-${di}-${i}`} className="text-right mono">{fmtMoney(d.chartSeries.profit[i]||0)}</Td>
-                  ))}
+                  {Array.from({length:d.years.length},(_,i)=>(<Td key={`profit-${di}-${i}`} className="text-right mono">{fmtMoney(d.chartSeries.profit[i]||0)}</Td>))}
                 </tr>
-                <tr><Td colSpan={maxYears+1} style={{height:6}}></Td></tr>
+                <tr><Td colSpan={(Math.max(0, ...calcData.map(x=>x.years.length)))+1} style={{height:6}}></Td></tr>
               </React.Fragment>
             ))}
           </tbody>
@@ -721,9 +693,9 @@ function useLocalState(key, initial){
 }
 
 /* ไอคอน */
-const IconDownload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M3 21h18"/></svg>);
-const IconUpload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 21V9m0 0l4 4m-4-4l-4 4"/><path d="M3 3h18"/></svg>);
-const IconPlus=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>);
+const IconDownload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M3 21h18"/></svg>);
+const IconUpload=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 21V9m0 0l4 4m-4-4l-4 4"/><path d="M3 3h18"/></svg>);
+const IconPlus=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14"/></svg>);
 
 function App(){
   const [banks, setBanks]=useLocalState("mortgage-banks", DEFAULT_BANKS);
@@ -749,17 +721,7 @@ function App(){
 
   const isSchedule=route.startsWith("#/schedule/"); const isInvest=route==="#/invest"; let scheduleIndex=null; if(isSchedule){ const parts=route.split("/"); scheduleIndex=+parts[2]; }
 
-  const downloadTemplateCSV=()=>{ 
-    const header=["name","principal","termYears","rate1","rate2","rate3","rateAfter","monthlyOverride","prepayPct","MRTA","ค่าประเมิน","ค่าจดจำนอง","ค่าธรรมเนียม","ค่าปรับปิดก่อน"].join(",");
-    const sample=[
-      "กรุงศรี (ปัจจุบัน),2623000,20,5.37,5.37,5.37,5.37,,0,0,0,0,0,0",
-      "ออมสิน (โปร Q3/2568),2623000,20,1.99,3.805,3.805,6.37,,0,0,0,0,1000,0"
-    ].join("\r\n");
-    const csv="\uFEFF"+header+"\r\n"+sample; 
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); 
-    const url=URL.createObjectURL(blob); const a=document.createElement("a");
-    a.href=url; a.download="mortgage_template.csv"; a.click(); URL.revokeObjectURL(url);
-  };
+  const downloadTemplateCSV=()=>{ const header=["name","principal","termYears","rate1","rate2","rate3","rateAfter","monthlyOverride","prepayPct","MRTA","ค่าประเมิน","ค่าจดจำนอง","ค่าธรรมเนียม","ค่าปรับปิดก่อน"].join(","); const sample=["กรุงศรี (ปัจจุบัน),2623000,20,5.37,5.37,5.37,5.37,15700,0,0,0,0,0,0","ออมสิน (โปร Q3/2568),2623000,20,1.99,3.805,3.805,6.37,,0,0,0,0,1000,0"].join("\r\n"); const csv="\uFEFF"+header+"\r\n"+sample; const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="mortgage_template.csv"; a.click(); URL.revokeObjectURL(url); };
 
   return (
     <div className={`mx-auto ${isInvest? "p-2 md:p-3" : "p-4 md:p-6 max-w-6xl"}`}>
@@ -772,22 +734,25 @@ function App(){
           </div>
         </div>
 
-        {/* ขวาบน: แสดงเฉพาะหน้า Home (ไม่ซ้ำซ้อนกับหน้า Investment) */}
-        {!isSchedule && !isInvest && (
+        {!isSchedule && (
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Refinance:</label>
-            <select className="ipt ipt-sm" value={refinanceBehavior} onChange={(e)=>setRefinanceBehavior(e.target.value)} aria-label="Refinance behavior">
+            <label className="text-sm text-gray-600">พฤติกรรมรีไฟแนนซ์:</label>
+            <select className="ipt ipt-sm" value={refinanceBehavior} onChange={(e)=>setRefinanceBehavior(e.target.value)}>
               <option value="none">ไม่รีไฟแนนซ์</option>
               <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
               <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
             </select>
 
-            <button className="btn-secondary ipt-sm" onClick={openInvest} title="Investment view" aria-label="Open Investment">Investment</button>
+            <button className="btn-secondary ipt-sm" onClick={openInvest} title="มุมมองลงทุน (ปีละ)">มุมมองลงทุน</button>
 
-            <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
-            <button className="btn-secondary icon-btn" onClick={downloadTemplateCSV} title="ดาวน์โหลดเทมเพลต CSV (Download)" aria-label="Download template"><IconDownload/></button>
-            <button className="btn-secondary icon-btn" onClick={onClickImport} title="นำเข้า CSV (Upload)" aria-label="Upload CSV"><IconUpload/></button>
-            <button className="btn icon-btn" onClick={addBank} title="เพิ่มธนาคาร" aria-label="Add bank"><IconPlus/></button>
+            {!isInvest && (
+              <>
+                <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={onFileChange}/>
+                <button className="btn-secondary icon-btn" onClick={downloadTemplateCSV} title="ดาวน์โหลดเทมเพลต CSV (Download)"><IconDownload/></button>
+                <button className="btn-secondary icon-btn" onClick={onClickImport} title="นำเข้า CSV (Upload)"><IconUpload/></button>
+                <button className="btn icon-btn" onClick={addBank} title="เพิ่มธนาคาร"><IconPlus/></button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -803,15 +768,15 @@ function App(){
 
           <div className="space-y-3">
             <CompareTable banks={banks} refinanceBehavior={refinanceBehavior} onOpenSchedule={openSchedule} onToggleFocus={()=>setFocusCompare(v=>!v)} showFocus={focusCompare} />
-            <div className="text-xs text-gray-500">หมายเหตุ: ระบบตรึงค่างวดตามช่วงอัตราดอก (คำนวณใหม่เมื่อเปลี่ยนอัตรา) • “โปะเพิ่ม (%)” จะคิดจากค่างวดแล้วตัดเงินต้นทันที • ตัวเลือก “Refinance” จะวนอัตราดอกตามรอบที่เลือก</div>
+            <div className="text-xs text-gray-500">หมายเหตุ: ระบบตรึงค่างวดตามช่วงอัตราดอก (คำนวณใหม่เมื่อเปลี่ยนอัตรา) • “โปะเพิ่ม (%)” จะคิดจากค่างวดแล้วตัดเงินต้นทันที • ตัวเลือก “รีไฟแนนซ์” จะวนอัตราดอกตามรอบที่เลือก</div>
           </div>
         </div>
       )}
 
-      {/* Investment (เต็มกว้าง) */}
+      {/* มุมมองลงทุน (เต็มกว้าง) */}
       {isInvest && (
         <div className="space-y-4">
-          <div className="flex items-center"><button className="btn-secondary ipt-sm" onClick={goHome} aria-label="Back">← กลับ</button></div>
+          <div className="flex items-center"><button className="btn-secondary ipt-sm" onClick={goHome}>← กลับ</button></div>
           <InvestmentView banks={banks} refinanceBehavior={refinanceBehavior} onChangeRefiBehavior={setRefinanceBehavior} />
         </div>
       )}
@@ -819,7 +784,7 @@ function App(){
       {/* ตารางงวดรายเดือน */}
       {isSchedule && banks[scheduleIndex] && (
         <div className="space-y-4">
-          <button className="btn-secondary ipt-sm" onClick={goHome} aria-label="Back">← กลับ</button>
+          <button className="btn-secondary ipt-sm" onClick={goHome}>← กลับ</button>
           <ScheduleView bank={banks[scheduleIndex]} refinanceBehavior={refinanceBehavior} />
         </div>
       )}
