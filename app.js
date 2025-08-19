@@ -478,19 +478,21 @@ function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
 
 /* ========== Investment View ========== */
 const METRIC_OPTIONS = [
-  { id:"cumWith",    name:"ดอกเบี้ยรวมสะสม (มีโปะ)" },
-  { id:"cumBase",    name:"ดอกเบี้ยรวมสะสม (ไม่โปะ)" },
-  { id:"cumInvest",  name:"เงินต้นลงทุนสะสม" },
-  { id:"investValue",name:"มูลค่าพอร์ตลงทุน" },
-  { id:"profit",     name:"กำไรลงทุนสะสม" },
-  { id:"netInv",     name:"Net Investment (พอร์ต–ดอกสะสม)" },
+  { id:"cumWith",      name:"ดอกเบี้ยรวมสะสม (มีโปะ)" },
+  { id:"cumBase",      name:"ดอกเบี้ยรวมสะสม (ไม่โปะ)" },
+  { id:"balanceWith",  name:"หนี้คงเหลือ (มีโปะ)" },        // ✅ ใหม่
+  { id:"balanceBase",  name:"หนี้คงเหลือ (ไม่โปะ)" },       // ✅ ใหม่
+  { id:"cumInvest",    name:"เงินต้นลงทุนสะสม" },
+  { id:"investValue",  name:"มูลค่าพอร์ตลงทุน" },
+  { id:"profit",       name:"กำไรลงทุนสะสม" },
+  { id:"netInv",       name:"Net Investment (พอร์ต–ดอกสะสม)" },
 ];
 
 function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   const [overridePrepayPct, setOverridePrepayPct] = useState("");
   const [monthlyCap, setMonthlyCap] = useState("");
   const [expectReturn, setExpectReturn] = useState("7");
-  const [graphMode, setGraphMode] = useState("saved"); // 'saved' | 'total'
+  const [graphMode, setGraphMode] = useState("saved"); // 'saved' | 'total' | 'balance'
   const [showChart, setShowChart] = useState(false);
   const [selectedIds, setSelectedIds] = useState(()=> banks.slice(0,2).map(b=>b.id));
   const [visibleMetrics, setVisibleMetrics] = useState(METRIC_OPTIONS.map(m=>m.id)); // เปิดหมดเป็นค่าเริ่มต้น
@@ -530,12 +532,19 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       cumInterestWith+=interestWith; cumInterestBase+=interestBase;
 
       const invY = investSeries[y] || { investValue:0, investProfit:0, cumInvest:0, capHitInvest:false };
+
+      // หนี้คงเหลือปลายปี (ถ้าโปะหมดก่อนก็เป็น 0 ไปจนจบ)
+      const endBalWith = sw.length>0 ? sw[sw.length-1].endBalance : (schedWith.rows.length>0 ? schedWith.rows[schedWith.rows.length-1].endBalance : 0);
+      const endBalBase = sb.length>0 ? sb[sb.length-1].endBalance : (schedBase.rows.length>0 ? schedBase.rows[schedBase.rows.length-1].endBalance : 0);
+
       const netInvestment = invY.investValue - cumInterestWith; // ✅ Net Investment = มูลค่าพอร์ต – ดอกสะสม (มีโปะ)
 
       perYear.push({
         yearIndex: y+1,
         cumInterestWith,
         cumInterestBase,
+        balanceWith: endBalWith,
+        balanceBase: endBalBase,
         cumInvest: invY.cumInvest,
         investValue: invY.investValue,
         investProfit: invY.investProfit,
@@ -546,7 +555,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     }
 
     let cumSaved=0;
-    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[];
+    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[], seriesRemWith=[], seriesRemBase=[];
     perYear.forEach(y=>{
       cumSaved += y.savedInterestYear;
       seriesSaved.push(cumSaved);
@@ -554,9 +563,17 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       seriesTotWith.push(y.cumInterestWith);
       seriesTotBase.push(y.cumInterestBase);
       seriesVal.push(y.investValue);
+      seriesRemWith.push(y.balanceWith);
+      seriesRemBase.push(y.balanceBase);
     });
 
-    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal } };
+    return {
+      id:b.id, name:b.name, years:perYear,
+      chartSeries:{
+        saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal,
+        remWith:seriesRemWith, remBase:seriesRemBase
+      }
+    };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
   const maxYears = Math.max(0, ...calcData.map(d=>d.years.length));
@@ -576,9 +593,14 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         series.push(d.chartSeries.saved);  labels.push(`${d.name} — ดอกเบี้ยที่ประหยัดสะสม`); colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.profit); labels.push(`${d.name} — กำไรลงทุนสะสม`);     colors.push(colorPairs[idx%colorPairs.length][1]);
       });
-    }else{
+    }else if(graphMode==="total"){
       selected.forEach((d,idx)=>{
         series.push(d.chartSeries.totWith); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม`);    colors.push(colorPairs[idx%colorPairs.length][0]);
+        series.push(d.chartSeries.val);     labels.push(`${d.name} — มูลค่าพอร์ตลงทุน`);    colors.push(colorPairs[idx%colorPairs.length][1]);
+      });
+    }else if(graphMode==="balance"){ // ✅ โหมดใหม่: หนี้คงเหลือ ↔ มูลค่าพอร์ต
+      selected.forEach((d,idx)=>{
+        series.push(d.chartSeries.remWith); labels.push(`${d.name} — หนี้คงเหลือ (มีโปะ)`); colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.val);     labels.push(`${d.name} — มูลค่าพอร์ตลงทุน`);    colors.push(colorPairs[idx%colorPairs.length][1]);
       });
     }
@@ -608,7 +630,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         ctx.stroke();
       });
 
-      const colW=380*dpi, startX=W-pad-colW, startY=pad;
+      const colW=420*dpi, startX=W-pad-colW, startY=pad;
       labels.forEach((lb,i)=>{ const y=startY + i*16*dpi; ctx.fillStyle=colors[i]; ctx.fillRect(startX,y,10*dpi,10*dpi); ctx.fillStyle="#111827"; ctx.fillText(lb, startX+14*dpi, y+10*dpi); });
 
       if(hoverI!==null){
@@ -620,7 +642,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         vals.forEach((v,si)=>{ ctx.beginPath(); ctx.arc(xh, yOf(v), 3*dpi, 0, Math.PI*2); ctx.fillStyle=colors[si]; ctx.fill(); });
 
         const tip=[`ปี ${hoverI+1}`, ...labels.map((lb,i)=>`${lb}: ${fmtMoney(vals[i])} บ.`)];
-        const boxW=420*dpi, boxH=(tip.length*16+12)*dpi;
+        const boxW=460*dpi, boxH=(tip.length*16+12)*dpi;
         const boxX=Math.min(Math.max(pad, xh+12*dpi), W-pad-boxW), boxY=pad+8*dpi;
         ctx.fillStyle="rgba(17,24,39,0.92)"; ctx.fillRect(boxX,boxY,boxW,boxH);
         ctx.fillStyle="#fff"; ctx.font=`${12*dpi}px sans-serif`;
@@ -636,7 +658,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   }, [showChart, calcData, selectedIds, graphMode]);
 
   const exportCSV=()=>{ 
-    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","NetInvestment","TotalInterestWith","TotalInterestBase","CapHit"].join(",");
+    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","NetInvestment","TotalInterestWith","TotalInterestBase","BalanceWith","BalanceBase","CapHit"].join(",");
     const body=calcData.map(d=> d.years.map((y,i)=>[
       d.name, y.yearIndex,
       (d.chartSeries.saved[i]||0).toFixed(2),
@@ -646,6 +668,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       y.netInvestment.toFixed(2),
       (d.chartSeries.totWith[i]||0).toFixed(2),
       (d.chartSeries.totBase[i]||0).toFixed(2),
+      (d.chartSeries.remWith[i]||0).toFixed(2),
+      (d.chartSeries.remBase[i]||0).toFixed(2),
       y.capHitInvest?1:0
     ].join(",")).join("\r\n")).join("\r\n");
     const csv="\uFEFF"+header+"\r\n"+body; 
@@ -704,6 +728,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
             >
               <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
               <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
+              <option value="balance">หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน</option>{/* ✅ ใหม่ */}
             </select>
           </div>
 
@@ -774,6 +799,20 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                   </tr>
                 )}
 
+                {show("balanceWith") && ( // ✅ แถวใหม่
+                  <tr>
+                    <Td className="sub-label first-col">หนี้คงเหลือ (กรณีมีโปะ)</Td>
+                    {Array.from({length:maxYears},(_,i)=>(<Td key={`bw-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.balanceWith||0)}</Td>))}
+                  </tr>
+                )}
+
+                {show("balanceBase") && ( // ✅ แถวใหม่
+                  <tr>
+                    <Td className="sub-label first-col">หนี้คงเหลือ (กรณีไม่โปะ)</Td>
+                    {Array.from({length:maxYears},(_,i)=>(<Td key={`bb-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.balanceBase||0)}</Td>))}
+                  </tr>
+                )}
+
                 {show("cumInvest") && (
                   <tr>
                     <Td className="sub-label first-col">เงินต้นลงทุนสะสม (ยอดลงทุนรายเดือน)</Td>
@@ -812,7 +851,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       <div className="text-xs text-gray-500">
         * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
         โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
-        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
+        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” และ “หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
       </div>
 
       {showChart && (
@@ -820,7 +859,13 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <div className="chart-box" onClick={(e)=>e.stopPropagation()}>
             <div className="chart-head">
               <div className="font-semibold">
-                กราฟเทียบหลายธนาคาร (แกน Y = บาท, แกน X = ปี) — โหมด: {graphMode==="saved"?"ประหยัดดอกสะสม ↔ กำไรลงทุน":"ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน"}
+                กราฟเทียบหลายธนาคาร (แกน Y = บาท, แกน X = ปี) — โหมด: {
+                  graphMode==="saved"
+                    ? "ประหยัดดอกสะสม ↔ กำไรลงทุน"
+                    : graphMode==="total"
+                      ? "ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน"
+                      : "หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน"
+                }
               </div>
               <button className="focus-close" onClick={()=>setShowChart(false)}>✕ ปิด</button>
             </div>
@@ -1079,7 +1124,8 @@ function App(){
   const moveBank=(i,dir)=>{ const j=i+dir; if(j<0||j>=banks.length) return; const arr=banks.slice(); [arr[i],arr[j]]=[arr[j],arr[i]]; setBanks(arr); };
 
   const onClickImport=()=> fileRef.current?.click();
-  const onFileChange=async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const text=await f.text(); const list=banksFromCSV(text); if(list.length===0){ alert("ไม่พบข้อมูลที่นำเข้า ตรวจสอบหัวตาราง/คอลัมน์อีกครั้ง"); return; } setBanks(list); e.target.value=""; };
+  const onFileChange=async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const text=await f.text(); const list=banksFromCSV(text); if(list.length===0){ alert("ไม่พบข้อมูลที่นำเข้า ตรวจสอบหัวตาราง/คอลัมน์อีกครั้ง"); return; } setBanks(list); e.target.value="";
+  };
 
   const isSchedule=route.startsWith("#/schedule/"); const isInvest=route==="#/invest"; const isAnalysis=route==="#/analysis";
   let scheduleIndex=null; if(isSchedule){ const parts=route.split("/"); scheduleIndex=+parts[2]; }

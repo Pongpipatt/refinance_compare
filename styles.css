@@ -109,7 +109,7 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .dropdown-footer{ border-top:1px solid var(--gray-200); margin-top:.35rem; padding-top:.35rem; font-size:.75rem; color:#6b7280; }
 
 /* คุมความกว้างคอลัมน์ซ้ายในหน้า Investment ให้อ่านง่าย */
-.first-col{ min-width: 320px; }
+.first-col{ min-width: 360px; }
 
 /* กันคอนโทรลทุกชิ้นไม่ให้หด/ขึ้นบรรทัดใหม่ */
 .controls-scroll > * { flex: 0 0 auto; }
