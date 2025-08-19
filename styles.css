@@ -26,6 +26,7 @@ body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubu
 }
 .btn{ background:#111827; color:#fff; border:0; cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn:hover{ background:#1f2937 } .btn:active{ background:#374151; transform:translateY(1px); }
+.btn:focus-visible,.btn-secondary:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; }
 .btn-secondary{ background:#fff; color:#1f2937; border:1px solid var(--gray-300); cursor:pointer; transition:background .15s ease,transform .06s ease; }
 .btn-secondary:hover{ background:#f9fafb } .btn-secondary:active{ background:#f3f4f6; transform:translateY(1px); }
 
@@ -61,15 +62,13 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 /* Cap alert (หน้าลงทุน) */
 .cap-alert{ background:var(--amber-50); color:var(--amber-600); border-radius:6px; padding:.1rem .25rem; font-weight:600; }
 
-/* Toolbar มุมมองลงทุน: บรรทัดเดียว เลื่อนแนวนอนได้ */
+/* Toolbar มุมมองลงทุน: บรรทัดเดียว — เลื่อนขวาได้ แต่ไม่บัง dropdown */
 .controls-card{
   background:#fff; border:1px solid var(--gray-200); border-radius:12px;
   padding:.6rem .8rem;
   display:flex; align-items:center; justify-content:flex-start;
-  gap:.6rem; white-space:nowrap; 
-  /* เดิม overflow:auto ทำให้แผงดรอปดาวน์ถูกคลิป คลิกไม่ติด */
-  overflow-x:auto; 
-  overflow-y:visible;
+  gap:.6rem; white-space:nowrap; overflow-x:auto; overflow-y:visible; /* <<< สำคัญ: ให้ dropdown โผล่ลงได้ */
+  flex-wrap:nowrap; position:relative; z-index:1;
 }
 .controls-card .group{ display:inline-flex; align-items:center; gap:.4rem; }
 
@@ -95,14 +94,23 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 /* ป้ายย่อยในคอลัมน์ซ้าย */
 .sub-label{ font-weight:600; color:#374151; }
 
-/* Dropdown panel (เหมือน panel อื่น) */
+/* Dropdown panel */
 .dropdown{ position:relative; }
 .dropdown-menu{
   position:absolute; top:calc(100% + 6px); left:0;
   background:#fff; border:1px solid var(--gray-200); border-radius:10px;
   padding:.5rem; box-shadow:0 8px 20px rgba(0,0,0,.08);
-  min-width:280px; z-index:30;   /* เหนือตาราง/หัวตาราง */
+  min-width:280px; z-index:30;
 }
 .dropdown-menu .item{ display:flex; align-items:center; gap:.5rem; padding:.25rem .25rem; }
 .dropdown-menu .item input{ width:16px; height:16px; }
 .dropdown-footer{ border-top:1px solid var(--gray-200); margin-top:.35rem; padding-top:.35rem; font-size:.75rem; color:#6b7280; }
+
+/* DSR indicator */
+.dsr{
+  display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .6rem; border-radius:9999px; font-weight:700; font-size:.85rem;
+  border:1px solid var(--gray-300); background:#fff;
+}
+.dsr.ok{ color:#065f46; background:#ecfdf5; border-color:#a7f3d0; }
+.dsr.warn{ color:#92400e; background:#fffbeb; border-color:#fde68a; }
+.dsr.bad{ color:#991b1b; background:#fef2f2; border-color:#fecaca; }
