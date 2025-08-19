@@ -1,4 +1,3 @@
-/* (ไฟล์เต็มตามนี้ วางทับได้เลย) */
 const { useMemo, useState, useEffect, useRef } = React;
 
 /* ========== Utils ========== */
@@ -61,6 +60,7 @@ function buildSchedule({
       const interest = balance * r;
       let principalPay = Math.max(0, basePay - interest);
 
+      // โปะเพิ่มคิดจากค่างวด (basePay) — แล้วตัดด้วย Cap (ห้ามเกิน Cap)
       const desiredExtra = Math.max(0, basePay*(prepayPct/100));
       let allowedExtra = desiredExtra, extraCapped=false;
       if(capPerMonth && capPerMonth>0){
@@ -98,6 +98,7 @@ function sumOtherCosts(otherCosts){ return Object.values(otherCosts||{}).reduce(
 
 /* ========== คำนวณ "ลงทุนรายเดือน+ทบต้นรายเดือน" ========== */
 function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expectReturnYear){
+  // ลงทุนคิดจากค่างวดฐาน (ไม่โปะ) และโดน Cap เช่นเดียวกับโปะ
   const rM = Math.pow(1 + (Number(expectReturnYear||0)/100), 1/12) - 1;
   let investValue = 0;
   let cumInvest   = 0;
@@ -222,7 +223,7 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
   );
 }
 
-/* ========== Compare Table (หน้าแรก: คงเดิม) ========== */
+/* ========== Compare Table (หน้าแรก) ========== */
 function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus, showFocus }){
   const rows = useMemo(()=> banks.map((b,idx)=>{
     const planned=Math.round(b.termYears*12);
@@ -406,6 +407,7 @@ function ScheduleView({ bank, refinanceBehavior }){
 }
 
 /* ========== Dropdown Multi (Investment) ========== */
+/* ใช้ Portal + position:fixed เพื่อไม่ให้โดนครอบเวลามี overflow-x บน toolbar */
 function DropdownMulti({ label, options, valueIds, onToggle, max=3 }){
   const [open, setOpen]=useState(false);
   const anchorRef=useRef(null);
@@ -507,9 +509,6 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 
       const invY = investSeries[y] || { investValue:0, investProfit:0, cumInvest:0, capHitInvest:false };
 
-      /* คำนวณ Net Investment (ลงทุนสุทธิ) = มูลค่าพอร์ต - ดอกเบี้ยสะสม (กรณีมีโปะ) */
-      const netInvestment = invY.investValue - cumInterestWith;
-
       perYear.push({
         yearIndex: y+1,
         cumInterestWith,
@@ -517,14 +516,13 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         cumInvest: invY.cumInvest,
         investValue: invY.investValue,
         investProfit: invY.investProfit,
-        netInvestment,               // << เพิ่มฟิลด์ใหม่
         savedInterestYear: Math.max(0, interestBase - interestWith),
         capHitInvest: invY.capHitInvest
       });
     }
 
     let cumSaved=0;
-    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[], seriesNet=[];
+    const seriesSaved=[], seriesProfit=[], seriesTotWith=[], seriesTotBase=[], seriesVal=[];
     perYear.forEach(y=>{
       cumSaved += y.savedInterestYear;
       seriesSaved.push(cumSaved);
@@ -532,10 +530,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       seriesTotWith.push(y.cumInterestWith);
       seriesTotBase.push(y.cumInterestBase);
       seriesVal.push(y.investValue);
-      seriesNet.push(y.netInvestment);
     });
 
-    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal, net:seriesNet } };
+    return { id:b.id, name:b.name, years:perYear, chartSeries:{ saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal } };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
   const maxYears = Math.max(0, ...calcData.map(d=>d.years.length));
@@ -546,7 +543,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     const selected=calcData.filter(d=>selectedIds.includes(d.id)); if(selected.length===0) return;
 
     const colorPairs=[["#10b981","#047857"],["#3b82f6","#1d4ed8"],["#f59e0b","#b45309"]];
-    const series=[], labels=[], colors[];
+    const series=[], labels=[], colors=[];  // ← แก้บรรทัด Error (ต้องมี "=" ทุกตัว)
 
     if(graphMode==="saved"){
       const len0=selected[0].chartSeries.saved.length;
@@ -555,7 +552,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
         series.push(d.chartSeries.saved);  labels.push(`${d.name} — ดอกเบี้ยที่ประหยัดสะสม`); colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.profit); labels.push(`${d.name} — กำไรลงทุนสะสม`);     colors.push(colorPairs[idx%colorPairs.length][1]);
       });
-    }else{ // 'total' : ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน
+    }else{
       selected.forEach((d,idx)=>{
         series.push(d.chartSeries.totWith); labels.push(`${d.name} — ดอกเบี้ยรวมสะสม`);    colors.push(colorPairs[idx%colorPairs.length][0]);
         series.push(d.chartSeries.val);     labels.push(`${d.name} — มูลค่าพอร์ตลงทุน`);    colors.push(colorPairs[idx%colorPairs.length][1]);
@@ -615,7 +612,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   }, [showChart, calcData, selectedIds, graphMode]);
 
   const exportCSV=()=>{ 
-    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","TotalInterestWith","TotalInterestBase","NetInvestmentCum","CapHit"].join(",");
+    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","TotalInterestWith","TotalInterestBase","CapHit"].join(",");
     const body=calcData.map(d=> d.years.map((y,i)=>[
       d.name, y.yearIndex,
       (d.chartSeries.saved[i]||0).toFixed(2),
@@ -624,7 +621,6 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       y.investValue.toFixed(2),
       (d.chartSeries.totWith[i]||0).toFixed(2),
       (d.chartSeries.totBase[i]||0).toFixed(2),
-      (d.chartSeries.net[i]|| (y.investValue - (d.chartSeries.totWith[i]||0)) ).toFixed(2),
       y.capHitInvest?1:0
     ].join(",")).join("\r\n")).join("\r\n");
     const csv="\uFEFF"+header+"\r\n"+body; 
@@ -708,23 +704,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
             />
           </div>
 
-          <button
-            className="btn-secondary ipt-sm"
-            onClick={exportCSV}
-            title="ส่งออกข้อมูลการลงทุน"
-            aria-label="Export investment"
-          >
-            Export
-          </button>
-
-          <button
-            className="btn ipt-sm"
-            onClick={()=>setShowChart(true)}
-            title="ดูกราฟเปรียบเทียบ"
-            aria-label="Open chart"
-          >
-            ดูกราฟ
-          </button>
+          <button className="btn-secondary ipt-sm" onClick={exportCSV} title="ส่งออกข้อมูลการลงทุน" aria-label="Export investment">Export</button>
+          <button className="btn ipt-sm" onClick={()=>setShowChart(true)} title="ดูกราฟเปรียบเทียบ" aria-label="Open chart">ดูกราฟ</button>
         </div>
       </div>
 
@@ -763,17 +744,6 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                   <Td className="sub-label first-col">กำไรลงทุนสะสม</Td>
                   {Array.from({length:maxYears},(_,i)=>(<Td key={`profit-${di}-${i}`} className="text-right mono">{fmtMoney(d.chartSeries.profit[i]||0)}</Td>))}
                 </tr>
-
-                {/* แถวใหม่: Net Investment (ลงทุนสุทธิ) */}
-                <tr>
-                  <Td className="sub-label first-col">Net Investment (ลงทุนสุทธิ) = มูลค่าพอร์ต − ดอกเบี้ยที่เสียไป</Td>
-                  {Array.from({length:maxYears},(_,i)=>{
-                    const val = d.years[i]?.netInvestment ?? 0;
-                    const cls = val>=0 ? "net-pos" : "net-neg";
-                    return (<Td key={`net-${di}-${i}`} className={`text-right mono`}><span className={cls}>{fmtMoney(val)}</span></Td>);
-                  })}
-                </tr>
-
                 <tr><Td colSpan={maxYears+1} style={{height:6}}></Td></tr>
               </React.Fragment>
             ))}
@@ -782,9 +752,9 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       </div>
 
       <div className="text-xs text-gray-500">
-        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน (ระบบจะลดเงินลงทุนให้ไม่เกิน Cap) •
-        Net Investment = มูลค่าพอร์ต ณ สิ้นปี − ดอกเบี้ยสะสม (กรณีมีโปะ) •
-        โหมดกราฟ “ประหยัดดอกสะสม” มี Base = 0 ตามนิยาม
+        * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
+        โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
+        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
       </div>
 
       {showChart && (
@@ -804,7 +774,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   );
 }
 
-/* ========== Pro Analysis (คงเดิม) ========== */
+/* ========== Pro Analysis ========== */
 function CompareTablePro({ banks, refinanceBehavior, settings }){
   const rows = useMemo(()=>{
     const planned0=Math.round((banks[0]?.termYears||0)*12) || 0;
@@ -1030,7 +1000,7 @@ const IconPlus=()=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 function App(){
   const [banks, setBanks]=useLocalState("mortgage-banks", DEFAULT_BANKS);
   const [route, setRoute]=useState(window.location.hash||"#/");
-  the [focusCompare, setFocusCompare]=useState(false);
+  const [focusCompare, setFocusCompare]=useState(false);
   const [refinanceBehavior, setRefinanceBehavior]=useState("none");
   const fileRef=React.useRef(null);
 

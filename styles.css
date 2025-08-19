@@ -66,14 +66,13 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .controls-card{
   background:#fff; border:1px solid var(--gray-200); border-radius:12px;
   padding:.6rem .8rem; position:relative; z-index:1;
-  /* สำคัญ: ให้ parent มองเห็นได้เต็มที่ ไม่ clip dropdown */
   overflow:visible;
 }
 .controls-scroll{
   display:flex; align-items:center; gap:.6rem;
   white-space:nowrap;
-  overflow-x:auto;          /* scroll แนวนอนอยู่ที่ชั้นในแทน */
-  overflow-y:visible;       /* dropdown โผล่ลงมาได้ */
+  overflow-x:auto;
+  overflow-y:visible;
   flex-wrap:nowrap;
 }
 .controls-card .group{ display:inline-flex; align-items:center; gap:.4rem; }
@@ -87,7 +86,7 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .sticky-first table tbody td:first-child{
   position: sticky; left: 0; background:#fff; z-index:1;
   box-shadow: 2px 0 0 0 var(--gray-200);
-  min-width: 260px;  /* เพิ่มความกว้างคอลัมน์ซ้าย */
+  min-width: 260px;
 }
 .sticky-first table thead th:first-child{ z-index:3; }
 
@@ -109,25 +108,8 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .dropdown-menu .item input{ width:16px; height:16px; }
 .dropdown-footer{ border-top:1px solid var(--gray-200); margin-top:.35rem; padding-top:.35rem; font-size:.75rem; color:#6b7280; }
 
-
 /* คุมความกว้างคอลัมน์ซ้ายในหน้า Investment ให้อ่านง่าย */
 .first-col{ min-width: 320px; }
 
 /* กันคอนโทรลทุกชิ้นไม่ให้หด/ขึ้นบรรทัดใหม่ */
-.controls-scroll > * { flex: 0 0 auto; }  /* no shrink, no wrap */
-
-/* เพิ่มไฮไลท์ Net Investment บวก/ลบ */
-.net-pos{
-  background: var(--emerald-50);
-  color: var(--emerald-600);
-  border-radius: 6px;
-  padding: .1rem .25rem;
-  font-weight: 600;
-}
-.net-neg{
-  background: var(--red-50);
-  color: var(--red-600);
-  border-radius: 6px;
-  padding: .1rem .25rem;
-  font-weight: 600;
-}
+.controls-scroll > * { flex: 0 0 auto; }
