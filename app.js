@@ -632,44 +632,95 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       <div className="invest-head">Investment (ต่อปี)</div>
 
       {/* controls: one line, scrollable horizontally */}
-      <div className="controls-card" title="เลื่อนแนวนอนได้ถ้าพื้นที่ไม่พอ">
-        <div className="group">
-          <label className="text-xs text-gray-600">Refinance:</label>
-          <select className="ipt ipt-sm" value={refinanceBehavior} onChange={(e)=>onChangeRefiBehavior(e.target.value)} aria-label="Refinance behavior">
-            <option value="none">ไม่รีไฟแนนซ์</option>
-            <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
-            <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
-          </select>
-        </div>
+<div className="controls-card" title="เลื่อนแนวนอนได้ถ้าพื้นที่ไม่พอ">
+  <div className="controls-scroll">
+    <div className="group">
+      <label className="text-xs text-gray-600">Refinance:</label>
+      <select
+        className="ipt ipt-sm"
+        value={refinanceBehavior}
+        onChange={(e)=>onChangeRefiBehavior(e.target.value)}
+        aria-label="Refinance behavior"
+      >
+        <option value="none">ไม่รีไฟแนนซ์</option>
+        <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
+        <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
+      </select>
+    </div>
 
-        <DropdownMulti label="เลือกธนาคาร (กราฟ)" options={banks} valueIds={selectedIds} onToggle={toggleSelect} max={3} />
+    <DropdownMulti
+      label="เลือกธนาคาร (กราฟ)"
+      options={banks}
+      valueIds={selectedIds}
+      onToggle={toggleSelect}
+      max={3}
+    />
 
-        <div className="group">
-          <label className="text-xs text-gray-600">โหมดกราฟ:</label>
-          <select className="ipt ipt-sm" value={graphMode} onChange={e=>setGraphMode(e.target.value)} aria-label="Graph mode">
-            <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
-            <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
-          </select>
-        </div>
+    <div className="group">
+      <label className="text-xs text-gray-600">โหมดกราฟ:</label>
+      <select
+        className="ipt ipt-sm"
+        value={graphMode}
+        onChange={e=>setGraphMode(e.target.value)}
+        aria-label="Graph mode"
+      >
+        <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
+        <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
+      </select>
+    </div>
 
-        <div className="group">
-          <label className="text-xs text-gray-600">ลงทุนเพิ่ม (%)</label>
-          <input className="ipt ipt-num ipt-sm mono" style={{width:90}} placeholder="เช่น 5" defaultValue={overridePrepayPct} onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}/>
-        </div>
+    <div className="group">
+      <label className="text-xs text-gray-600">ลงทุนเพิ่ม (%)</label>
+      <input
+        className="ipt ipt-num ipt-sm mono"
+        style={{width:90}}
+        placeholder="เช่น 5"
+        defaultValue={overridePrepayPct}
+        onBlur={(e)=> setOverridePrepayPct(e.target.value.trim())}
+      />
+    </div>
 
-        <div className="group">
-          <label className="text-xs text-gray-600">เพดาน/เดือน (บาท)</label>
-          <input className="ipt ipt-num ipt-sm mono" style={{width:140}} placeholder="เช่น 16000" defaultValue={monthlyCap} onBlur={(e)=> setMonthlyCap(e.target.value.trim())}/>
-        </div>
+    <div className="group">
+      <label className="text-xs text-gray-600">เพดาน/เดือน (บาท)</label>
+      <input
+        className="ipt ipt-num ipt-sm mono"
+        style={{width:140}}
+        placeholder="เช่น 16000"
+        defaultValue={monthlyCap}
+        onBlur={(e)=> setMonthlyCap(e.target.value.trim())}
+      />
+    </div>
 
-        <div className="group">
-          <label className="text-xs text-gray-600">คาดหวังผลตอบแทน/ปี (%)</label>
-          <input className="ipt ipt-num ipt-sm mono" style={{width:90}} placeholder="5–8" defaultValue={expectReturn} onBlur={(e)=> setExpectReturn(e.target.value.trim())}/>
-        </div>
+    <div className="group">
+      <label className="text-xs text-gray-600">คาดหวังผลตอบแทน/ปี (%)</label>
+      <input
+        className="ipt ipt-num ipt-sm mono"
+        style={{width:90}}
+        placeholder="5–8"
+        defaultValue={expectReturn}
+        onBlur={(e)=> setExpectReturn(e.target.value.trim())}
+      />
+    </div>
 
-        <button className="btn-secondary ipt-sm" onClick={exportCSV} title="ส่งออกข้อมูลการลงทุน" aria-label="Export investment">Export</button>
-        <button className="btn ipt-sm" onClick={()=>setShowChart(true)} title="ดูกราฟเปรียบเทียบ" aria-label="Open chart">ดูกราฟ</button>
-      </div>
+    <button
+      className="btn-secondary ipt-sm"
+      onClick={exportCSV}
+      title="ส่งออกข้อมูลการลงทุน"
+      aria-label="Export investment"
+    >
+      Export
+    </button>
+
+    <button
+      className="btn ipt-sm"
+      onClick={()=>setShowChart(true)}
+      title="ดูกราฟเปรียบเทียบ"
+      aria-label="Open chart"
+    >
+      ดูกราฟ
+    </button>
+  </div>
+</div>
 
       {/* ตาราง */}
       <div className="table-wrap sticky-first" style={{ maxHeight:"75vh" }}>

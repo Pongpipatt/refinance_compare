@@ -112,3 +112,6 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 
 /* คุมความกว้างคอลัมน์ซ้ายในหน้า Investment ให้อ่านง่าย */
 .first-col{ min-width: 320px; }
+
+/* กันคอนโทรลทุกชิ้นไม่ให้หด/ขึ้นบรรทัดใหม่ */
+.controls-scroll > * { flex: 0 0 auto; }  /* no shrink, no wrap */
