@@ -9,6 +9,13 @@
 *{box-sizing:border-box}
 body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial,'Apple Color Emoji','Segoe UI Emoji'; color: var(--gray-900);}
 
+/* layout / card */
+.container{ max-width:1200px; margin:0 auto; padding:1rem; }
+.card{
+  background:#fff; border:1px solid var(--gray-200); border-radius:12px;
+  padding:1rem; box-shadow: 0 1px 2px rgba(0,0,0,.03);
+}
+
 /* Inputs */
 .ipt{ width:100%; border:1px solid var(--gray-300); background:#fff; border-radius:10px; padding:.5rem .75rem; outline:none; -moz-appearance:textfield; }
 .ipt::-webkit-outer-spin-button,.ipt::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
@@ -46,17 +53,19 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .cell-max{ background:var(--red-50); color:var(--red-600); font-weight:600; border-radius:6px; padding:.1rem .25rem; }
 .year-col{ width:7rem; text-align:right; }
 
-/* Focus / Chart */
+/* Focus / Chart / Modal */
 .focus-layer{ position:fixed; inset:0; z-index:60; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; padding:1rem; }
 .focus-box{ width:min(1400px,98vw); height:min(90vh,96vh); background:#fff; border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column; padding:1rem; }
 .focus-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.5rem; }
 .focus-close{ border:1px solid var(--gray-300); background:#fff; border-radius:9999px; padding:.35rem .9rem; cursor:pointer; }
 .focus-body{ flex:1; min-height:0; }
 
-.chart-modal{ position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:1rem; }
-.chart-box{ width:min(1100px,95vw); height:min(80vh,95vh); background:#fff; border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column; }
-.chart-head{ padding:.75rem 1rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--gray-200); }
-.chart-body{ padding:1rem; flex:1; min-height:0; }
+.chart-modal, .simple-modal{ position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:1rem; }
+.chart-box, .simple-box{
+  width:min(1100px,95vw); height:min(80vh,95vh); background:#fff; border-radius:12px; box-shadow:0 10px 24px rgba(0,0,0,.18); display:flex; flex-direction:column;
+}
+.chart-head, .simple-head{ padding:.75rem 1rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--gray-200); }
+.chart-body, .simple-body{ padding:1rem; flex:1; min-height:0; overflow:auto; }
 .chart-body canvas{ width:100%; height:100%; }
 
 /* Cap alert */
@@ -101,15 +110,12 @@ tbody tr{ border-top:1px solid var(--gray-200) }
 .dropdown-menu{
   position:absolute; top:calc(100% + 6px); left:0;
   background:#fff; border:1px solid var(--gray-200); border-radius:10px;
-  padding:.5rem; box-shadow:0 8px 20px rgba(0,0,0,.08);
-  min-width:280px; z-index:9999;
+  padding:.5rem; box-shadow:0 8px 24px rgba(0,0,0,.12);
 }
-.dropdown-menu .item{ display:flex; align-items:center; gap:.5rem; padding:.25rem .25rem; }
-.dropdown-menu .item input{ width:16px; height:16px; }
-.dropdown-footer{ border-top:1px solid var(--gray-200); margin-top:.35rem; padding-top:.35rem; font-size:.75rem; color:#6b7280; }
+.dropdown .item{ display:flex; align-items:center; gap:.5rem; padding:.25rem .5rem; }
+.dropdown .dropdown-footer{ margin-top:.25rem; border-top:1px dashed var(--gray-200); padding-top:.25rem; color:#6b7280; font-size:.75rem; }
 
-/* คุมความกว้างคอลัมน์ซ้ายในหน้า Investment ให้อ่านง่าย */
-.first-col{ min-width: 400px; }
-
-/* กันคอนโทรลทุกชิ้นไม่ให้หด/ขึ้นบรรทัดใหม่ */
-.controls-scroll > * { flex: 0 0 auto; }
+/* topbar */
+.topbar{ display:flex; gap:.5rem; align-items:center; justify-content:space-between; margin-bottom:.75rem;}
+.topbar .left{ display:flex; gap:.5rem; align-items:center; }
+.topbar .right{ display:flex; gap:.5rem; align-items:center; }
