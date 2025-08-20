@@ -98,51 +98,64 @@ function buildSchedule({
 }
 function sumOtherCosts(otherCosts){ return Object.values(otherCosts||{}).reduce((s,v)=>s+Number(v||0),0); }
 
-/* --- helper: สร้างตารางแบบ “รีเซ็ต 30 ปีครั้งแรกเมื่อถึงรอบรีฯ” --- */
-function buildScheduleWithFirstReset({
-  bank, termMonths, refinanceBehavior, prepayPct=0, capPerMonth=null
-}){
-  const cycle = refinanceBehavior==="every3y" ? 36 : refinanceBehavior==="every5y" ? 60 : 0;
-  if(cycle<=0) {
-    // ไม่รีเซ็ต ใช้ตารางธรรมดา
+/* --- helper: สร้างตารางรีไฟแนนซ์ครั้งแรกและคงอายุสัญญาที่เหลือ --- */
+function buildScheduleRefiRemain({
+  bank, termMonths, refinanceBehavior, prepayPct = 0, capPerMonth = null
+}) {
+  const cycle = refinanceBehavior === "every3y" ? 36 : refinanceBehavior === "every5y" ? 60 : 0;
+  if (cycle <= 0) {
+    // ไม่รีไฟแนนซ์ ใช้ตารางธรรมดา
     return buildSchedule({
       principal: bank.principal,
       termMonths,
       rateSchedule: makeRateSchedule(bank, termMonths, effectiveBehavior(bank.refiPref, refinanceBehavior)),
       monthlyPaymentOverride: bank.monthlyOverride,
-      prepayPct, capPerMonth
+      prepayPct,
+      capPerMonth
     });
   }
 
-  // ส่วนที่ 1: ก่อนรีฯ
+  // ส่วนที่ 1: ก่อนรีไฟแนนซ์
   const eff1 = effectiveBehavior(bank.refiPref, refinanceBehavior);
-  const rs1 = makeRateSchedule(bank, Math.min(termMonths, cycle), eff1);
+  const term1 = Math.min(termMonths, cycle);
+  const rs1 = makeRateSchedule(bank, term1, eff1);
   const seg1 = buildSchedule({
-    principal: bank.principal, termMonths: Math.min(termMonths, cycle),
-    rateSchedule: rs1, monthlyPaymentOverride: bank.monthlyOverride,
-    prepayPct, capPerMonth
+    principal: bank.principal,
+    termMonths: term1,
+    rateSchedule: rs1,
+    monthlyPaymentOverride: bank.monthlyOverride,
+    prepayPct,
+    capPerMonth
   });
 
-  if(seg1.endBalance<=0 || cycle>=termMonths){
+  if (seg1.endBalance <= 0 || cycle >= termMonths) {
     return seg1; // จบก่อนหรือยังไม่ถึงรอบ
   }
 
-  // ส่วนที่ 2: หลังรีฯ — รีเซ็ตเป็น 30 ปี
+  // ส่วนที่ 2: หลังรีไฟแนนซ์ — ใช้จำนวนเดือนคงเหลือ
   const remainBal = seg1.endBalance;
-  const term2 = 360; // 30 ปี
-  const eff2 = effectiveBehavior(bank.refiPref, refinanceBehavior);
-  const rs2 = makeRateSchedule(bank, term2, eff2);
+  const remainTerm = termMonths - cycle;
+
+  // ถ้าเหลือน้อยกว่า 1 ล้าน ไม่รีไฟแนนซ์ต่อ ใช้อัตราหลังครบโปรโมชัน
+  const eff2 = remainBal < 1_000_000 ? "stop" : effectiveBehavior(bank.refiPref, refinanceBehavior);
+  const rs2 = (eff2 === "stop")
+    ? [{ months: remainTerm, rateYear: bank.rateAfter }]
+    : makeRateSchedule(bank, remainTerm, eff2);
+
   const seg2 = buildSchedule({
-    principal: remainBal, termMonths: term2,
-    rateSchedule: rs2, monthlyPaymentOverride: bank.monthlyOverride,
-    prepayPct, capPerMonth
+    principal: remainBal,
+    termMonths: remainTerm,
+    rateSchedule: rs2,
+    monthlyPaymentOverride: bank.monthlyOverride,
+    prepayPct,
+    capPerMonth
   });
 
   // รวมช่วง
-  const rows = [...seg1.rows, ...seg2.rows.map((r,i)=>({...r, index: seg1.rows.length + i + 1}))];
-  const totalInterest = rows.reduce((s,r)=>s+r.interest,0);
-  const totalPayment  = rows.reduce((s,r)=>s+r.payment+(r.extraPrepay||0),0);
-  const endBalance = rows.length ? rows[rows.length-1].endBalance : 0;
+  const rows = [...seg1.rows, ...seg2.rows.map((r, i) => ({ ...r, index: seg1.rows.length + i + 1 }))];
+  const totalInterest = rows.reduce((s, r) => s + r.interest, 0);
+  const totalPayment = rows.reduce((s, r) => s + r.payment + (r.extraPrepay || 0), 0);
+  const endBalance = rows.length ? rows[rows.length - 1].endBalance : 0;
   return { rows, totalInterest, totalPayment, endBalance };
 }
 
@@ -288,9 +301,9 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
     const planned=Math.round(b.termYears*12);
     const eff = effectiveBehavior(b.refiPref, refinanceBehavior);
 
-    // ตารางงวด (รองรับรีเซ็ต 30 ปีครั้งแรกเมื่อถึงรอบรีฯ)
-    const schedule = (settings.refiTermMode==="reset30" && (refinanceBehavior==="every3y"||refinanceBehavior==="every5y"))
-      ? buildScheduleWithFirstReset({ bank:b, termMonths:planned, refinanceBehavior, prepayPct:b.prepayPct||0 })
+    // ตารางงวด (รีไฟแนนซ์ครั้งแรกแล้วคงอายุสัญญาที่เหลือ)
+    const schedule = (refinanceBehavior==="every3y"||refinanceBehavior==="every5y")
+      ? buildScheduleRefiRemain({ bank:b, termMonths:planned, refinanceBehavior, prepayPct:b.prepayPct||0 })
       : buildSchedule({
           principal:b.principal, termMonths:planned,
           rateSchedule:makeRateSchedule(b, planned, eff),
@@ -423,14 +436,14 @@ function ScheduleView({ bank, refinanceBehavior, settings }){
   const [startYM, setStartYM]=useState(()=>{ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`; });
 
   const schedule=useMemo(()=>{
-    return (settings.refiTermMode==="reset30" && (refinanceBehavior==="every3y"||refinanceBehavior==="every5y"))
-      ? buildScheduleWithFirstReset({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 })
+    return (refinanceBehavior==="every3y"||refinanceBehavior==="every5y")
+      ? buildScheduleRefiRemain({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 })
       : buildSchedule({
           principal:bank.principal, termMonths:planned,
           rateSchedule:makeRateSchedule(bank, planned, eff),
           monthlyPaymentOverride:bank.monthlyOverride, prepayPct:bank.prepayPct||0, installmentMode:"fixPerBlock"
         });
-  }, [bank, planned, eff, refinanceBehavior, settings.refiTermMode]);
+  }, [bank, planned, eff, refinanceBehavior]);
 
   const totalI=schedule.totalInterest, totalP=schedule.rows.reduce((s,r)=>s+r.principalTotal,0);
 
@@ -1180,12 +1193,11 @@ function App(){
   const [focusCompare, setFocusCompare]=useState(false);
   const [refinanceBehavior, setRefinanceBehavior]=useState("none");
 
-  // 🆕 Global settings: reg %, MRTA options, refi term mode
+  // 🆕 Global settings: reg %, MRTA options
   const [settings, setSettings] = useLocalState("mortgage-settings", {
     regFeePct: 1.00,           // ค่าจดจำนอง % เริ่มต้น
     includeMrtaInLoan: false,  // กู้รวม MRTA ไหม
-    mrtaRefundPct: 60,         // เวนคืน MRTA ณ ปีที่ 4
-    refiTermMode: "remain"     // "remain" | "reset30"
+    mrtaRefundPct: 60          // เวนคืน MRTA ณ ปีที่ 4
   });
 
   const fileRef=React.useRef(null);
@@ -1241,13 +1253,6 @@ function App(){
               <option value="none">ไม่รีไฟแนนซ์</option>
               <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
               <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
-            </select>
-
-            {/* 🆕 Refi term mode */}
-            <label className="text-sm text-gray-600">Refi term:</label>
-            <select className="ipt ipt-sm" value={settings.refiTermMode} onChange={(e)=>setSettings({...settings, refiTermMode:e.target.value})} aria-label="Refi term mode">
-              <option value="remain">คงเหลือเดิม</option>
-              <option value="reset30">รีเซ็ต 30 ปี</option>
             </select>
 
             {/* 🆕 Mortgage reg % */}
