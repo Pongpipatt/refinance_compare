@@ -1,4 +1,4 @@
-/* app.js — 20 Aug 2025 patch: Refi term reset 30y, MRTA refund 60% at Y4, Mortgage reg % default, Balance graph uses base, NetInvestment uses cumInterestBase */
+/* app.js — 20 Aug 2025 patch: Refi term reset 30y, MRTA refund 60% at Y4, Mortgage reg % default, Balance graph uses base, NetInvestment uses base balance */
 
 const { useMemo, useState, useEffect, useRef } = React;
 
@@ -154,6 +154,7 @@ function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expect
   let cumInvest   = 0;
   const perYear   = [];
   let capHitThisYear = false;
+  let firstCrossMonth = null;
 
   for(let m=0; m<baseRows.length; m++){
     const pay = baseRows[m].payment || 0;
@@ -169,6 +170,11 @@ function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expect
     cumInvest   += allowed;
     investValue *= (1 + rM);
 
+    if(firstCrossMonth===null){
+      const balBase = baseRows[m]?.endBalance || 0;
+      if(investValue >= balBase - 1e-9) firstCrossMonth = m+1;
+    }
+
     const endOfYear = ((m+1)%12===0) || (m===baseRows.length-1);
     if(endOfYear){
       const yearIndex = Math.floor(m/12)+1;
@@ -183,7 +189,7 @@ function computeInvestmentSeriesMonthly(baseRows, investPct, capPerMonth, expect
       capHitThisYear = false;
     }
   }
-  return perYear;
+  return { perYear, firstCrossMonth };
 }
 
 /* ========== Inputs ========== */
@@ -561,7 +567,7 @@ const METRIC_OPTIONS = [
   { id:"cumInvest",    name:"เงินต้นลงทุนสะสม" },
   { id:"investValue",  name:"มูลค่าพอร์ตลงทุน" },
   { id:"profit",       name:"กำไรลงทุนสะสม" },
-  { id:"netInv",       name:"Net Investment (พอร์ต–ดอกสะสม)" },
+  { id:"netInv",       name:"Net Investment (พอร์ต–หนี้ไม่โปะ)" },
 ];
 
 function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
@@ -597,7 +603,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       monthlyPaymentOverride:b.monthlyOverride, prepayPct:0, capPerMonth:null, installmentMode:"fixPerBlock"
     });
 
-    const investSeries = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
+    const { perYear: investSeries, firstCrossMonth } = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
 
     const years=Math.max(Math.ceil(schedWith.rows.length/12), Math.ceil(schedBase.rows.length/12));
     const perYear=[]; let cumInterestWith=0, cumInterestBase=0;
@@ -613,8 +619,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       const endBalWith = sw.length>0 ? sw[sw.length-1].endBalance : (schedWith.rows.length>0 ? schedWith.rows[schedWith.rows.length-1].endBalance : 0);
       const endBalBase = sb.length>0 ? sb[sb.length-1].endBalance : (schedBase.rows.length>0 ? schedBase.rows[schedBase.rows.length-1].endBalance : 0);
 
-      // ✅ Net Investment = พอร์ต – ดอกสะสม (ไม่โปะ)
-      const netInvestment = invY.investValue - cumInterestBase;
+      // ✅ Net Investment = พอร์ต – หนี้คงเหลือฐาน (ไม่โปะ)
+      const netInvestment = invY.investValue - endBalBase;
 
       perYear.push({
         yearIndex: y+1,
@@ -644,12 +650,19 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       seriesRemBase.push(y.balanceBase);
     });
 
+    const crossPoint = firstCrossMonth ? {
+      monthIndex:firstCrossMonth,
+      year: Math.ceil(firstCrossMonth/12),
+      month: ((firstCrossMonth-1)%12)+1
+    } : null;
+
     return {
       id:b.id, name:b.name, years:perYear,
       chartSeries:{
         saved:seriesSaved, profit:seriesProfit, totWith:seriesTotWith, totBase:seriesTotBase, val:seriesVal,
         remWith:seriesRemWith, remBase:seriesRemBase
-      }
+      },
+      crossPoint
     };
   }), [banks, overridePrepayPct, monthlyCap, expectReturn, refinanceBehavior]);
 
@@ -736,7 +749,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   }, [showChart, calcData, selectedIds, graphMode]);
 
   const exportCSV=()=>{ 
-    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","NetInvestment","TotalInterestWith","TotalInterestBase","BalanceWith","BalanceBase","CapHit"].join(",");
+    const header=["ธนาคาร","ปี","SavedInterestCum","InvestProfitCum","InvestPrincipalCum","InvestValueEnd","NetInvestment_PortMinusDebt","TotalInterestWith","TotalInterestBase","BalanceWith","BalanceBase","CapHit"].join(",");
     const body=calcData.map(d=> d.years.map((y,i)=>[
       d.name, y.yearIndex,
       (d.chartSeries.saved[i]||0).toFixed(2),
@@ -860,8 +873,8 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
           <tbody>
             {calcData.map((d,di)=>(
               <React.Fragment key={d.id}>
-                {di>0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}</Td></tr>}
-                {di===0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}</Td></tr>}
+                {di>0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}{d.crossPoint? ` — พอร์ต≥หนี้: ปี ${d.crossPoint.year} เดือน ${d.crossPoint.month}`:""}</Td></tr>}
+                {di===0 && <tr className="bank-divider"><Td colSpan={maxYears+1}>{d.name}{d.crossPoint? ` — พอร์ต≥หนี้: ปี ${d.crossPoint.year} เดือน ${d.crossPoint.month}`:""}</Td></tr>}
 
                 {visibleMetrics.includes("cumWith") && (
                   <tr>
@@ -914,7 +927,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 
                 {visibleMetrics.includes("netInv") && (
                   <tr>
-                    <Td className="sub-label first-col">Net Investment (พอร์ต – ดอกสะสม)</Td>
+                    <Td className="sub-label first-col">Net Investment (พอร์ต – หนี้ไม่โปะ)</Td>
                     {Array.from({length:maxYears},(_,i)=>(<Td key={`net-${di}-${i}`} className="text-right mono">{fmtMoney(d.years[i]?.netInvestment||0)}</Td>))}
                   </tr>
                 )}
