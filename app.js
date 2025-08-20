@@ -1,8 +1,8 @@
-/* app.js — Combined FULL build (ตามข้อกำหนดล่าสุด)
+/* app.js — Combined FULL build (ครบทุกข้อกำหนด)
  * ครอบคลุม:
- * 1) ปุ่ม “ดูรายละเอียดการคำนวณต่อเดือน” (PayDetailPopup) + ปุ่มเรียกในตาราง (onOpenPayDetail)
- * 2) ตรรกะรีไฟแนนซ์แบบ “รีตามปีคงเหลือ” (buildScheduleWithRemainRefi) และหยุดรีเมื่อหนี้ < 1,000,000
- * 3) ปุ่มเลือกรีรายธนาคาร (refiPref) คงอยู่
+ * 1) PayDetailPopup + ปุ่ม “ดูรายละเอียดการคำนวณต่อเดือน” (onOpenPayDetail)
+ * 2) รีไฟแนนซ์ “รีตามปีคงเหลือ” (buildScheduleWithRemainRefi) + หยุดรีเมื่อหนี้ < 1,000,000
+ * 3) ปุ่มเลือกรีรายธนาคาร (refiPref) อยู่ครบ
  * 4) InvestmentPanel: จุดตัด “หนี้คงเหลือแบบไม่โปะ” vs “มูลค่าพอร์ตลงทุน”
  */
 
@@ -20,7 +20,7 @@ const fmtInt = (n)=> Number(n||0).toLocaleString("th-TH");
 function parseMoneyInput(str){ if(str==null) return 0; const v=Number(String(str).replace(/,/g,"").trim()); return isFinite(v)?v:0; }
 function formatMoneyInput(v){ if(v===""||v==null) return ""; return fmtMoney(v); }
 
-/* IRR helpers (คงไว้เผื่อหน้า Pro/Advanced ที่มีอยู่แล้ว) */
+/* IRR helpers */
 function irrMonthly(cashflows){
   let lo=-0.99, hi=1.0;
   const npv=(r)=> cashflows.reduce((s,x)=> s + x.cf/Math.pow(1+r, x.t), 0);
@@ -127,7 +127,6 @@ function makeRateSchedule(bank, termMonths, behavior){
 const effectiveBehavior=(bankPref, globalBehavior)=> (bankPref && bankPref!=="default") ? bankPref : globalBehavior;
 
 /* ===================== Refi-by-remaining (หยุดถ้า balance < 1,000,000) ===================== */
-/* NOTE: ไม่ reset อายุสัญญาเป็น 30 ปีทุกครั้ง — ใช้รอบรี 36/60 เดือน แล้วลด term เหลือจริง */
 function buildScheduleWithRemainRefi({ bank, termMonths, refinanceBehavior, prepayPct=0, capPerMonth=null }){
   const cycle = refinanceBehavior==="every3y" ? 36 : refinanceBehavior==="every5y" ? 60 : 0;
   const _principal = bank._principalAdj ?? bank.principal;
@@ -149,7 +148,6 @@ function buildScheduleWithRemainRefi({ bank, termMonths, refinanceBehavior, prep
   while(monthsLeft>0 && balance>0){
     const segLen = Math.min(cycle, monthsLeft);
 
-    // สร้างตารางช่วงนี้ (ใช้โปรปี 1–3 ของธนาคารตาม behavior)
     const seg = buildSchedule({
       principal: balance,
       termMonths: segLen,
@@ -163,7 +161,7 @@ function buildScheduleWithRemainRefi({ bank, termMonths, refinanceBehavior, prep
 
     if(monthsLeft<=0 || balance<=0) break;
 
-    // หยุดรีเมื่อหนี้ต่ำกว่า 1,000,000 — ที่เหลือคิดด้วยอัตราหลังโปรจนจบ (behavior="none")
+    // หยุดรีเมื่อหนี้ต่ำกว่า 1,000,000 — ที่เหลือคิดด้วยอัตราหลังโปรจนจบ
     if(balance < 1_000_000){
       const tail = buildSchedule({
         principal: balance,
@@ -476,12 +474,9 @@ function ScheduleView({ bank, refinanceBehavior }){
   );
 }
 
-/* ===================== PayDetailPopup (ปุ่มดูรายละเอียดการคำนวณต่อเดือน) ===================== */
-/* แสดง “บล็อกค่างวด base คงที่” จากอัตราดอก/รีไฟแนนซ์ โดยไม่แตะ logic อื่น */
+/* ===================== PayDetailPopup ===================== */
 function PayDetailPopup({ bank, refinanceBehavior, onClose }) {
   const termMonths = Math.round(bank.termYears * 12);
-
-  // ปรับ principal ถ้ารวม MRTA เข้าเงินกู้ (สอดคล้องกับ CompareTable)
   const mrta = Number((bank.otherCosts || {}).MRTA || 0);
   const principalAdj = Number(bank.principal || 0) + (bank.includeMrtaInLoan ? mrta : 0);
   const eff = effectiveBehavior(bank.refiPref, refinanceBehavior);
@@ -497,7 +492,6 @@ function PayDetailPopup({ bank, refinanceBehavior, onClose }) {
     [bank, principalAdj, termMonths, eff]
   );
 
-  // รวมเป็น segment ตาม “ค่างวด base” ที่คงที่ ภายในบล็อก
   const segs = [];
   let curr = null;
   let startBalance = principalAdj;
@@ -571,15 +565,7 @@ function PayDetailPopup({ bank, refinanceBehavior, onClose }) {
   );
 }
 
-/* ===================== Investment (จุดตัด: หนี้ “ไม่โปะ” vs มูลค่าพอร์ต) ===================== */
-/**
- * computeInvestmentSeriesMonthly
- * @param {Array} baseRows - schedule "ไม่โปะ" (ใช้ค่างวดฐานเป็นตัวตั้ง)
- * @param {number} prepayPct - % ของค่างวดฐาน ที่ “เดิมจะโปะ” แต่ในโหมดลงทุน = เอาไปลงทุนแทน
- * @param {number|null} capPerMonth - เพดาน (ค่างวดฐาน + เงินลงทุน) ต่อเดือน; ถ้า null = ไม่จำกัด
- * @param {string|number} expectReturnYearPct - ผลตอบแทนคาดหวัง % ต่อปี
- * @returns {Array} ต่อปี: { investValue, investProfit, cumInvest, capHitInvest }
- */
+/* ===================== Investment (จุดตัด: หนี้ “ไม่โปะ” vs พอร์ต) ===================== */
 function computeInvestmentSeriesMonthly(baseRows, prepayPct, capPerMonth, expectReturnYearPct){
   const rYear = Number(expectReturnYearPct||0)/100;
   const rMonth = Math.pow(1+rYear, 1/12)-1;
@@ -588,22 +574,18 @@ function computeInvestmentSeriesMonthly(baseRows, prepayPct, capPerMonth, expect
   const years=[];
 
   baseRows.forEach((row, idx)=>{
-    const basePay = row.payment; // ค่างวดฐาน (ไม่โปะ)
-    let invest = Math.max(0, basePay * (prepayPct/100)); // เงินที่จะโปะ → ลงทุนแทน
+    const basePay = row.payment;
+    let invest = Math.max(0, basePay * (prepayPct/100));
 
     if(capPerMonth && capPerMonth>0){
       const room = Math.max(0, capPerMonth - basePay);
       if(invest > room + 1e-9){ invest = room; capHitFlagYear = true; }
     }
 
-    // ลงทุนต้นใหม่ + ทบกำไร
     investValue = (investValue + invest) * (1 + rMonth);
     cumInvest += invest;
-
-    // กำไรโดยประมาณ = มูลค่า - เงินต้นลงทุนสะสม
     investProfit = Math.max(0, investValue - cumInvest);
 
-    // ปิดสิ้นปี
     const isYearEnd = ((idx+1) % 12 === 0) || (idx === baseRows.length-1);
     if(isYearEnd){
       years.push({
@@ -620,7 +602,6 @@ function computeInvestmentSeriesMonthly(baseRows, prepayPct, capPerMonth, expect
 }
 
 function InvestmentPanel({ bank, refinanceBehavior }) {
-  // baseline: “ไม่โปะ”
   const termMonths = Math.round(bank.termYears * 12);
   const eff = effectiveBehavior(bank.refiPref, refinanceBehavior);
 
@@ -635,15 +616,12 @@ function InvestmentPanel({ bank, refinanceBehavior }) {
     [bank, termMonths, eff]
   );
 
-  // ลงทุนแทนโปะ (ใช้ prepayPct ของธนาคารนั้น)
-  const expectReturn = 7; // ตัวอย่าง: 7%/ปี (ผู้ใช้ปรับที่อื่นได้ถ้ามี UI)
+  const expectReturn = 7; // %/ปี ตัวอย่าง
   const investSeries = React.useMemo(
-    () =>
-      computeInvestmentSeriesMonthly(baseSched.rows, bank.prepayPct || 0, null, expectReturn),
+    () => computeInvestmentSeriesMonthly(baseSched.rows, bank.prepayPct || 0, null, expectReturn),
     [baseSched.rows, bank.prepayPct, expectReturn]
   );
 
-  // สร้าง series “หนี้คงเหลือปลายปี” จาก baseline (ไม่โปะ)
   const yearlyBaseBalance = React.useMemo(() => {
     const arr = [];
     for (let i = 0; i < baseSched.rows.length; i++) {
@@ -653,7 +631,6 @@ function InvestmentPanel({ bank, refinanceBehavior }) {
     return arr;
   }, [baseSched.rows]);
 
-  // หา “จุดตัด”: ปีแรกที่ พอร์ตลงทุน >= หนี้คงเหลือ (baseline)
   const cross = React.useMemo(() => {
     const n = Math.min(yearlyBaseBalance.length, investSeries.length);
     for (let i = 0; i < n; i++) {
@@ -694,7 +671,7 @@ function InvestmentPanel({ bank, refinanceBehavior }) {
         </table>
       </div>
       <div className="text-sm mt-2">
-        ผลลัพธ์นี้อิง: <b>หนี้คงเหลือแบบไม่โปะ</b> เทียบกับ <b>พอร์ตลงทุน</b> ที่นำเงิน “โปะ” ไปลงทุนแทน (ตาม requirement)
+        ผลลัพธ์นี้อิง: <b>หนี้คงเหลือแบบไม่โปะ</b> เทียบกับ <b>พอร์ตลงทุน</b> ที่นำเงิน “โปะ” ไปลงทุนแทน
         {cross ? (
           <div className="mt-1">
             ✅ จุดตัดเกิดในปีที่ <b>{cross.yearIndex}</b> — พอร์ต {fmtMoney(cross.investValue)} ≥ หนี้ {fmtMoney(cross.balance)}
@@ -775,7 +752,7 @@ function App(){
         banks={banks}
         refinanceBehavior={refinanceBehavior}
         onOpenSchedule={(idx)=>setScheduleIndex(idx)}
-        onOpenPayDetail={(idx)=>setPayDetailIndex(idx)}  // << onOpenPayDetail
+        onOpenPayDetail={(idx)=>setPayDetailIndex(idx)}
         onToggleFocus={()=>setShowFocus(v=>!v)}
         showFocus={showFocus}
       />
