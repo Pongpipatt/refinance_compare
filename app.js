@@ -603,18 +603,23 @@ function ScheduleView({ bank, refinanceBehavior, settings }){
   const [startYM, setStartYM]=useState(()=>{ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`; });
 
   const schedule=useMemo(()=>{
-    if ((refinanceBehavior==="every3y"||refinanceBehavior==="every5y")){
-      if (settings.refiTermMode==="reset30"){
-        return buildScheduleWithFirstReset({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 });
-      }
-      return buildScheduleWithMinRefiRule({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 });
+  // ✅ ใช้ eff (รวม override รายธนาคาร) แทนค่า global
+  if (eff==="every3y" || eff==="every5y"){
+    if (settings.refiTermMode==="reset30"){
+      return buildScheduleWithFirstReset({
+        bank, termMonths:planned, refinanceBehavior: eff, prepayPct: bank.prepayPct||0
+      });
     }
-    return buildSchedule({
-      principal:bank.principal, termMonths:planned,
-      rateSchedule:makeRateSchedule(bank, planned, eff),
-      monthlyPaymentOverride:bank.monthlyOverride, prepayPct:bank.prepayPct||0, installmentMode:"fixPerBlock"
+    return buildScheduleWithMinRefiRule({
+      bank, termMonths:planned, refinanceBehavior: eff, prepayPct: bank.prepayPct||0
     });
-  }, [bank, planned, eff, refinanceBehavior, settings.refiTermMode]);
+  }
+  return buildSchedule({
+    principal: bank.principal, termMonths: planned,
+    rateSchedule: makeRateSchedule(bank, planned, eff),
+    monthlyPaymentOverride: bank.monthlyOverride, prepayPct: bank.prepayPct||0, installmentMode:"fixPerBlock"
+  });
+}, [bank, planned, eff, settings.refiTermMode]);
 
   const totalI=schedule.totalInterest, totalP=schedule.rows.reduce((s,r)=>s+r.principalTotal,0);
 
