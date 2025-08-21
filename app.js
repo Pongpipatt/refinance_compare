@@ -256,66 +256,69 @@ function BankEditor({
         </div>
       </div>
 
-      {/* 🆕 แทรกคอนโทรลจากแถบด้านบนมาไว้ในกริดของการ์ด (global state เดิม แต่ย้ายตำแหน่ง UI) */}
-      <div className="grid md:grid-cols-4 grid-cols-2 gap-3">
-        <L label="Refinance">
-          <select
-            className="ipt ipt-sm"
-            value={refinanceBehavior}
-            onChange={(e)=>setRefinanceBehavior(e.target.value)}
-            aria-label="Refinance behavior"
-          >
-            <option value="none">ไม่รีไฟแนนซ์</option>
-            <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
-            <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
-          </select>
-        </L>
+      {/* 🆕 แทรกคอนโทรลจากแถบด้านบนมาไว้ในกริดของการ์ด (global state เดิม แต่ย้ายตำแหน่ง UI) */}{/* 🆕 แทรกคอนโทรลจากแถบด้านบนมาไว้ในกริดของการ์ด (global state เดิม แต่ย้ายตำแหน่ง UI)
+    ปิดชั่วคราว: ใช้ false && (...) เพื่อไม่ render คอนโทรล แต่ไม่กระทบ logic ภายใน */}
+{false && (
+  <div className="grid md:grid-cols-4 grid-cols-2 gap-3">
+    <L label="Refinance">
+      <select
+        className="ipt ipt-sm"
+        value={refinanceBehavior}
+        onChange={(e)=>setRefinanceBehavior(e.target.value)}
+        aria-label="Refinance behavior"
+      >
+        <option value="none">ไม่รีไฟแนนซ์</option>
+        <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
+        <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
+      </select>
+    </L>
 
-        <L label="Refi term">
-          <select
-            className="ipt ipt-sm"
-            value={settings.refiTermMode}
-            onChange={(e)=>setSettings({...settings, refiTermMode:e.target.value})}
-            aria-label="Refi term mode"
-          >
-            <option value="remain">คงเหลือเดิม</option>
-            <option value="reset30">รีเซ็ต 30 ปี</option>
-          </select>
-        </L>
+    <L label="Refi term">
+      <select
+        className="ipt ipt-sm"
+        value={settings.refiTermMode}
+        onChange={(e)=>setSettings({...settings, refiTermMode:e.target.value})}
+        aria-label="Refi term mode"
+      >
+        <option value="remain">คงเหลือเดิม</option>
+        <option value="reset30">รีเซ็ต 30 ปี</option>
+      </select>
+    </L>
 
-        <L label="ค่าจดจำนอง %">
-          <input
-            className="ipt ipt-sm ipt-num mono"
-            style={{width:"100%"}}
-            defaultValue={settings.regFeePct}
-            onBlur={(e)=>setSettings({...settings, regFeePct: clamp3(parseMoneyInput(e.target.value))})}
-            aria-label="Mortgage registration percent"
-          />
-        </L>
+    <L label="ค่าจดจำนอง %">
+      <input
+        className="ipt ipt-sm ipt-num mono"
+        style={{width:"100%"}}
+        defaultValue={settings.regFeePct}
+        onBlur={(e)=>setSettings({...settings, regFeePct: clamp3(parseMoneyInput(e.target.value))})}
+        aria-label="Mortgage registration percent"
+      />
+    </L>
 
-        <L label="MRTA refund % (เวนคืนปีที่ 4)">
-          <input
-            className="ipt ipt-sm ipt-num mono"
-            style={{width:"100%"}}
-            defaultValue={settings.mrtaRefundPct}
-            onBlur={(e)=>setSettings({...settings, mrtaRefundPct: clamp3(parseMoneyInput(e.target.value))})}
-            aria-label="MRTA refund percent"
-          />
-        </L>
+    <L label="MRTA refund % (เวนคืนปีที่ 4)">
+      <input
+        className="ipt ipt-sm ipt-num mono"
+        style={{width:"100%"}}
+        defaultValue={settings.mrtaRefundPct}
+        onBlur={(e)=>setSettings({...settings, mrtaRefundPct: clamp3(parseMoneyInput(e.target.value))})}
+        aria-label="MRTA refund percent"
+      />
+    </L>
 
-        <label className="block text-sm md:col-span-2">
-          <div className="text-gray-600 mb-1">MRTA in loan</div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={!!settings.includeMrtaInLoan}
-              onChange={(e)=>setSettings({...settings, includeMrtaInLoan:e.target.checked})}
-              aria-label="Include MRTA in loan"
-            />
-            <span className="text-sm text-gray-700">รวมเบี้ย MRTA ในวงเงินกู้</span>
-          </div>
-        </label>
+    <label className="block text-sm md:col-span-2">
+      <div className="text-gray-600 mb-1">MRTA in loan</div>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={!!settings.includeMrtaInLoan}
+          onChange={(e)=>setSettings({...settings, includeMrtaInLoan:e.target.checked})}
+          aria-label="Include MRTA in loan"
+        />
+        <span className="text-sm text-gray-700">รวมเบี้ย MRTA ในวงเงินกู้</span>
       </div>
+    </label>
+  </div>
+)}
 
       {/* ฟอร์มข้อมูลธนาคารเดิม */}
       <div className="grid md:grid-cols-4 grid-cols-2 gap-3 mt-3">
