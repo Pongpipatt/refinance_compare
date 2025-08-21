@@ -4,18 +4,79 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ตัวช่วยเทียบรีไฟแนนซ์บ้าน — Prepay%</title>
+
+  <!-- CSS ของโปรเจกต์ -->
   <link rel="stylesheet" href="styles.css"/>
-  <!-- Tailwind CDN (ใช้แค่ utility พื้นฐาน) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tailwind (ใช้เพียง utility) -->
+  <script
+    src="https://cdn.tailwindcss.com"
+    onerror="document.getElementById('boot-status').textContent='โหลด Tailwind จาก CDN ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ตหรือเครือข่ายองค์กรบล็อก CDN';document.getElementById('boot-status').style.display='block';">
+  </script>
+
+  <style>
+    /* แถบแจ้งเตือนตอนบูต */
+    #boot-status{
+      display:none; position:fixed; inset:0; background:rgba(17,24,39,.6);
+      color:#fff; z-index:99999; padding:24px; font-size:16px;
+      align-items:center; justify-content:center; text-align:center;
+    }
+    #boot-status .box{background:#111827; border-radius:12px; padding:18px 22px; max-width:720px}
+  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-gray-50 to-white">
   <div id="root"></div>
 
-  <!-- React + ReactDOM (Production) -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel เพื่อให้โหลด JSX จากไฟล์ .js ได้ -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- แจ้งเตือนตอนบูต/กรณี CDN ล้มเหลว -->
+  <div id="boot-status"><div class="box">
+    กำลังเตรียมหน้าเว็บ… หากค้างนานผิดปกติ อาจเกิดจากการโหลดไฟล์จาก CDN ไม่สำเร็จ
+    (เช่น React / ReactDOM / Babel) กรุณาตรวจสอบอินเทอร์เน็ต หรือการบล็อกโดเมน CDN
+  </div></div>
+
+  <noscript>
+    <div style="padding:12px;background:#fee2e2;color:#7f1d1d;text-align:center">
+      จำเป็นต้องเปิดใช้งาน JavaScript เพื่อใช้งานแอปนี้
+    </div>
+  </noscript>
+
+  <!-- React + ReactDOM (UMD) -->
+  <script
+    src="https://unpkg.com/react@18/umd/react.production.min.js"
+    crossorigin
+    onerror="document.getElementById('boot-status').textContent='โหลด React ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ตหรือเครือข่ายองค์กรบล็อก CDN';document.getElementById('boot-status').style.display='block';">
+  </script>
+  <script
+    src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    crossorigin
+    onerror="document.getElementById('boot-status').textContent='โหลด ReactDOM ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ตหรือเครือข่ายองค์กรบล็อก CDN';document.getElementById('boot-status').style.display='block';">
+  </script>
+
+  <!-- Babel (สำหรับรัน JSX จากไฟล์ .js) -->
+  <script
+    src="https://unpkg.com/@babel/standalone/babel.min.js"
+    onerror="document.getElementById('boot-status').textContent='โหลด Babel ไม่สำเร็จ — เบราเซอร์จึงไม่สามารถแปลง JSX ใน app.js ได้';document.getElementById('boot-status').style.display='block';">
+  </script>
+
+  <!-- ตัวตรวจเช็คหลังโหลด CDN ครบแล้ว ก่อนเรียกใช้แอป -->
+  <script>
+    (function(){
+      function fail(msg){
+        var el = document.getElementById('boot-status');
+        el.textContent = msg;
+        el.style.display = 'flex';
+      }
+      function ready(){
+        // ถ้า React/ReactDOM/Babel ไม่มา ให้แจ้งเตือนและไม่ไปต่อ
+        if(!window.React){ return fail('ไม่พบ React บนหน้าจอ — อาจโหลดไม่สำเร็จจาก CDN'); }
+        if(!window.ReactDOM){ return fail('ไม่พบ ReactDOM บนหน้าจอ — อาจโหลดไม่สำเร็จจาก CDN'); }
+        if(!window.Babel){ return fail('ไม่พบบริการ Babel — อาจโหลดไม่สำเร็จจาก CDN'); }
+        // ผ่านการตรวจทั้งหมด ซ่อนแถบสถานะ
+        document.getElementById('boot-status').style.display = 'none';
+      }
+      // รอให้สคริปต์ด้านบนโหลดเสร็จก่อนค่อยตรวจ
+      window.addEventListener('load', ready);
+    })();
+  </script>
 
   <!-- แอปหลัก -->
   <script type="text/babel" src="app.js"></script>
