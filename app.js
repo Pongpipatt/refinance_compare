@@ -1,4 +1,4 @@
-/* app.js — 21 Aug 2025 patch23 (add buildScheduleWithMinRefiRul...1M at next cycle; wire up in Compare/Schedule/Investment/Pro) */
+/* app.js — 21 Aug 2025 patch23 (add buildScheduleWithMinRefiRule: stop refi if balance<1M at next cycle; wire up in Compare/Schedule/Investment/Pro) */
 
 const { useMemo, useState, useEffect, useRef } = React;
 
@@ -438,42 +438,35 @@ function BankEditor({
 /* ========== Compare Table (หน้าแรก) ========== */
 function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus, showFocus, settings }){
   const rows = useMemo(()=> banks.map((b,idx)=>{
-    const planned = Math.round(b.termYears*12);
+    const planned=Math.round(b.termYears*12);
 
     const eff = effectiveBehavior(b.refiPref, refinanceBehavior);
-    const blockedByMin = Number(b.principal||0) < 1_000_000; // แสดงป้ายเตือนเท่านั้น
+    const blockedByMin = Number(b.principal||0) < 1_000_000; // แค่แสดงป้ายเตือน (ไม่ไปบังคับ eff แล้ว)
 
-    // ตารางงวด: โหมดรี 3/5 ปี → ใช้กติกาใหม่ (หยุดรีเมื่อ <1M)
+    // ตารางงวด
     let schedule;
     if (eff==="every3y" || eff==="every5y"){
       if (settings.refiTermMode==="reset30"){
-        schedule = buildScheduleWithFirstReset({
-          bank: b, termMonths: planned, refinanceBehavior: eff, prepayPct: b.prepayPct||0
-        });
+        schedule = buildScheduleWithFirstReset({ bank:b, termMonths:planned, refinanceBehavior:eff, prepayPct:b.prepayPct||0 });
       } else {
-        schedule = buildScheduleWithMinRefiRule({
-          bank: b, termMonths: planned, refinanceBehavior: eff, prepayPct: b.prepayPct||0
-        });
+        schedule = buildScheduleWithMinRefiRule({ bank:b, termMonths:planned, refinanceBehavior:eff, prepayPct:b.prepayPct||0 });
       }
     } else {
       schedule = buildSchedule({
-        principal: b.principal, termMonths: planned,
-        rateSchedule: makeRateSchedule(b, planned, eff),
-        monthlyPaymentOverride: b.monthlyOverride,
-        prepayPct: b.prepayPct||0,
-        installmentMode: "fixPerBlock"
+        principal:b.principal, termMonths:planned,
+        rateSchedule:makeRateSchedule(b, planned, eff),
+        monthlyPaymentOverride:b.monthlyOverride, prepayPct:b.prepayPct||0, installmentMode:"fixPerBlock"
       });
     }
 
-    const payoffMonths = schedule.rows.length;
-    const first36 = schedule.rows.slice(0,36), first60 = schedule.rows.slice(0,60);
-    const int3y = first36.reduce((s,r)=>s+r.interest,0), prepay3y = first36.reduce((s,r)=>s+(r.extraPrepay||0),0);
-    const int5y = first60.reduce((s,r)=>s+r.interest,0), prepay5y = first60.reduce((s,r)=>s+(r.extraPrepay||0),0);
+    const payoffMonths=schedule.rows.length, first36=schedule.rows.slice(0,36), first60=schedule.rows.slice(0,60);
+    const int3y=first36.reduce((s,r)=>s+r.interest,0), prepay3y=first36.reduce((s,r)=>s+(r.extraPrepay||0),0);
+    const int5y=first60.reduce((s,r)=>s+r.interest,0), prepay5y=first60.reduce((s,r)=>s+(r.extraPrepay||0),0);
 
-    // เดือนที่ค่างวด < ดอกเบี้ย (แจ้งเตือน)
+    // นับเดือนที่ “ค่างวดพื้นฐาน < ดอกเบี้ยเดือนนั้น” (แจ้งเตือน)
     const negAm = schedule.rows.filter(r => (r.payment + 1e-6) < r.interest).length;
 
-    // ค่าจดจำนองอัตโนมัติ (ถ้าไม่กรอก)
+    // ค่าจดจำนอง: ถ้าไม่กรอก ให้คำนวณจาก % เริ่มต้น
     const enteredReg = Number((b.otherCosts||{})["ค่าจดจำนอง"]||0);
     const autoReg    = Math.max(enteredReg, Number(settings.regFeePct||1)/100 * Number(b.principal||0));
 
@@ -488,8 +481,8 @@ function CompareTable({ banks, refinanceBehavior, onOpenSchedule, onToggleFocus,
     const other3yFinal = other3y - enteredReg + autoReg;
     const other5yFinal = other5y - enteredReg + autoReg;
 
-    const total3y = int3y + other3yFinal;
-    const total5y = int5y + other5yFinal;
+    const total3y=int3y+other3yFinal;
+    const total5y=int5y+other5yFinal;
 
     const stepPays=[]; let lastPay=null;
     for(const r of schedule.rows){
@@ -605,29 +598,21 @@ function addMonthsYM(ym, add){ const [y,m]=ym.split("-").map(Number); const d=ne
 function thaiMonthLabel(ym){ const [y,m]=ym.split("-").map(Number); return `${TH_MONTHS[m-1]} ${y+543}`; }
 
 function ScheduleView({ bank, refinanceBehavior, settings }){
-  const planned = Math.round(bank.termYears*12);
+  const planned=Math.round(bank.termYears*12);
   const eff = effectiveBehavior(bank.refiPref, refinanceBehavior);
-  const [startYM, setStartYM] = useState(()=>{
-    const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0");
-    return `${y}-${m}`;
-  });
+  const [startYM, setStartYM]=useState(()=>{ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); return `${y}-${m}`; });
 
-  const schedule = useMemo(()=>{
-    if (refinanceBehavior==="every3y" || refinanceBehavior==="every5y"){
+  const schedule=useMemo(()=>{
+    if ((refinanceBehavior==="every3y"||refinanceBehavior==="every5y")){
       if (settings.refiTermMode==="reset30"){
-        return buildScheduleWithFirstReset({
-          bank, termMonths: planned, refinanceBehavior, prepayPct: bank.prepayPct||0
-        });
+        return buildScheduleWithFirstReset({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 });
       }
-      return buildScheduleWithMinRefiRule({
-        bank, termMonths: planned, refinanceBehavior, prepayPct: bank.prepayPct||0
-      });
+      return buildScheduleWithMinRefiRule({ bank, termMonths:planned, refinanceBehavior, prepayPct:bank.prepayPct||0 });
     }
     return buildSchedule({
-      principal: bank.principal, termMonths: planned,
-      rateSchedule: makeRateSchedule(bank, planned, eff),
-      monthlyPaymentOverride: bank.monthlyOverride,
-      prepayPct: bank.prepayPct||0, installmentMode:"fixPerBlock"
+      principal:bank.principal, termMonths:planned,
+      rateSchedule:makeRateSchedule(bank, planned, eff),
+      monthlyPaymentOverride:bank.monthlyOverride, prepayPct:bank.prepayPct||0, installmentMode:"fixPerBlock"
     });
   }, [bank, planned, eff, refinanceBehavior, settings.refiTermMode]);
 
@@ -770,40 +755,34 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
   const [graphMode, setGraphMode] = useState("saved"); // 'saved' | 'total' | 'balance'
   const [showChart, setShowChart] = useState(false);
   const [selectedIds, setSelectedIds] = useState(()=> banks.slice(0,2).map(b=>b.id));
-  const [visibleMetrics, setVisibleMetrics] = useState(METRIC_OPTIONS.map(m=>m.id));
+  const [visibleMetrics, setVisibleMetrics] = useState(METRIC_OPTIONS.map(m=>m.id)); // เปิดหมดเป็นค่าเริ่มต้น
   useEffect(()=>{ if(selectedIds.length===0 && banks[0]) setSelectedIds([banks[0].id]); }, [banks]);
+  const toggleSelect=(id)=> setSelectedIds(prev=>{ const has=prev.includes(id); let next = has? prev.filter(x=>x!==id) : [...prev, id]; if(next.length>3) next=next.slice(1); return next; });
+  const toggleMetric=(id)=> setVisibleMetrics(prev=> prev.includes(id)? prev.filter(x=>x!==id): [...prev, id]);
 
   const canvasRef=useRef(null);
 
-  // คำนวณต่อปี
+  /* ---- calc yearly ---- */
   const calcData = useMemo(()=> banks.map((b)=>{
     const termMonths=Math.round(b.termYears*12);
     const pctUse = (overridePrepayPct===""? (b.prepayPct||0) : Number(overridePrepayPct||0));
     const cap = Number(monthlyCap||0);
     const eff = effectiveBehavior(b.refiPref, refinanceBehavior);
 
-    // มีโปะ
     const schedWith = (eff==="every3y"||eff==="every5y")
-      ? buildScheduleWithMinRefiRule({
-          bank:b, termMonths, refinanceBehavior:eff, prepayPct: pctUse, capPerMonth: cap>0? cap: null
-        })
+      ? buildScheduleWithMinRefiRule({ bank:b, termMonths, refinanceBehavior:eff, prepayPct:pctUse, capPerMonth: cap>0? cap: null })
       : buildSchedule({
           principal:b.principal, termMonths,
           rateSchedule:makeRateSchedule(b, termMonths, eff),
-          monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse,
-          capPerMonth: cap>0? cap: null, installmentMode:"fixPerBlock"
+          monthlyPaymentOverride:b.monthlyOverride, prepayPct:pctUse, capPerMonth: cap>0? cap: null, installmentMode:"fixPerBlock"
         });
 
-    // ไม่โปะ (ฐาน)
     const schedBase = (eff==="every3y"||eff==="every5y")
-      ? buildScheduleWithMinRefiRule({
-          bank:b, termMonths, refinanceBehavior:eff, prepayPct: 0, capPerMonth: null
-        })
+      ? buildScheduleWithMinRefiRule({ bank:b, termMonths, refinanceBehavior:eff, prepayPct:0, capPerMonth:null })
       : buildSchedule({
           principal:b.principal, termMonths,
           rateSchedule:makeRateSchedule(b, termMonths, eff),
-          monthlyPaymentOverride:b.monthlyOverride, prepayPct:0,
-          capPerMonth:null, installmentMode:"fixPerBlock"
+          monthlyPaymentOverride:b.monthlyOverride, prepayPct:0, capPerMonth:null, installmentMode:"fixPerBlock"
         });
 
     const investSeries = computeInvestmentSeriesMonthly(schedBase.rows, pctUse, cap>0? cap: null, expectReturn);
@@ -870,7 +849,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
     const selected=calcData.filter(d=>selectedIds.includes(d.id)); if(selected.length===0) return;
 
     const colorPairs=[["#10b981","#047857"],["#3b82f6","#1d4ed8"],["#f59e0b","#b45309"]];
-    const series=[], labels=[], colors[];
+    const series=[], labels=[], colors=[];
 
     if(graphMode==="saved"){
       const len0=selected[0].chartSeries.saved.length;
@@ -1167,28 +1146,24 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
 /* ========== Pro Analysis ========== */
 function CompareTablePro({ banks, refinanceBehavior, settings }){
   const rows = useMemo(()=>{
-    const planned0 = Math.round((banks[0]?.termYears||0)*12) || 0;
-    const eff0 = banks[0] ? effectiveBehavior(banks[0].refiPref, refinanceBehavior) : "none";
-    const baseSched = banks[0]
-      ? ((eff0==="every3y"||eff0==="every5y")
-          ? buildScheduleWithMinRefiRule({
-              bank:banks[0], termMonths:planned0, refinanceBehavior:eff0, prepayPct:banks[0].prepayPct||0
-            })
-          : buildSchedule({
-              principal:banks[0].principal, termMonths:planned0,
-              rateSchedule:makeRateSchedule(banks[0], planned0, eff0),
-              monthlyPaymentOverride:banks[0].monthlyOverride, prepayPct:banks[0].prepayPct||0, installmentMode:"fixPerBlock"
-            })
-        )
-      : {rows:[]};
+    const planned0=Math.round((banks[0]?.termYears||0)*12) || 0;
+    const eff0 = banks[0]? effectiveBehavior(banks[0].refiPref, refinanceBehavior): "none";
+    const baseSched = banks[0] ? (
+      (eff0==="every3y"||eff0==="every5y")
+        ? buildScheduleWithMinRefiRule({ bank:banks[0], termMonths:planned0, refinanceBehavior:eff0, prepayPct:banks[0].prepayPct||0 })
+        : buildSchedule({
+            principal:banks[0].principal, termMonths:planned0,
+            rateSchedule:makeRateSchedule(banks[0], planned0, eff0),
+            monthlyPaymentOverride:banks[0].monthlyOverride, prepayPct:banks[0].prepayPct||0, installmentMode:"fixPerBlock"
+          })
+    ) : {rows:[]};
 
     return banks.map((b,idx)=>{
       const planned=Math.round(b.termYears*12);
       const eff = effectiveBehavior(b.refiPref, refinanceBehavior);
+
       const sched = (eff==="every3y"||eff==="every5y")
-        ? buildScheduleWithMinRefiRule({
-            bank:b, termMonths:planned, refinanceBehavior:eff, prepayPct:b.prepayPct||0
-          })
+        ? buildScheduleWithMinRefiRule({ bank:b, termMonths:planned, refinanceBehavior:eff, prepayPct:b.prepayPct||0 })
         : buildSchedule({
             principal:b.principal, termMonths:planned,
             rateSchedule:makeRateSchedule(b, planned, eff),
@@ -1257,9 +1232,9 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
     });
   }, [banks, refinanceBehavior, settings]);
 
-  const best3  = rows.length ? Math.min(...rows.map(r=>r.total3y)) : null;
+  const best3 = rows.length ? Math.min(...rows.map(r=>r.total3y)) : null;
   const worst3 = rows.length ? Math.max(...rows.map(r=>r.total3y)) : null;
-  const best5  = rows.length ? Math.min(...rows.map(r=>r.total5y)) : null;
+  const best5 = rows.length ? Math.min(...rows.map(r=>r.total5y)) : null;
   const worst5 = rows.length ? Math.max(...rows.map(r=>r.total5y)) : null;
 
   return (
@@ -1324,9 +1299,7 @@ function ProAnalysis({ banks, refinanceBehavior, onBack }){
     const planned=Math.round(banks[0].termYears*12);
     const eff = effectiveBehavior(banks[0].refiPref, refinanceBehavior);
     const sched=(eff==="every3y"||eff==="every5y")
-      ? buildScheduleWithMinRefiRule({
-          bank:banks[0], termMonths:planned, refinanceBehavior:eff, prepayPct:banks[0].prepayPct||0
-        })
+      ? buildScheduleWithMinRefiRule({ bank:banks[0], termMonths:planned, refinanceBehavior:eff, prepayPct:banks[0].prepayPct||0 })
       : buildSchedule({
           principal:banks[0].principal, termMonths:planned,
           rateSchedule:makeRateSchedule(banks[0], planned, eff),
@@ -1540,7 +1513,7 @@ function banksFromCSV(csvText){
   const header=rows[0].map(h=>h.trim()); const idx=(name)=> header.findIndex(h=>h.toLowerCase()===name.toLowerCase());
   const col={ name:idx("name"), principal:idx("principal"), termYears:idx("termYears"), rate1:idx("rate1"), rate2:idx("rate2"), rate3:idx("rate3"), rateAfter:idx("rateAfter"), monthlyOverride:idx("monthlyOverride"), prepayPct:idx("prepayPct"), MRTA:idx("MRTA"), appr:header.findIndex(h=>h==="ค่าประเมิน"), reg:header.findIndex(h=>h==="ค่าจดจำนอง"), fee:header.findIndex(h=>h==="ค่าธรรมเนียม"), preclose:header.findIndex(h=>h==="ค่าปรับปิดก่อน") };
   const list=[]; for(let r=1;r<rows.length;r++){ const row=rows[r]; if(!row||row.length===0) continue; const val=(i)=> (i>=0 && i<row.length ? row[i] : ""); if((val(col.name)||"").trim()==="") continue;
-    const otherCosts={ MRTA:toNumber(val(col.MRTA)),"ค่าประเมิน":toNumber(val(col.appr)),"ค่าจดจำนอง":toNumber(val(col.reg)),"ค่าธรรมเนียม":toNumber(val(col.fee)),"ค่าปรับปิดก่อน":toNumber(val(col.preclose)) };
+    const otherCosts={ MRTA:toNumber(val(col.MRTA)),"ค่าประเมิน":toNumber(val(col.appr)),"ค่จดจำนอง":toNumber(val(col.reg)),"ค่าธรรมเนียม":toNumber(val(col.fee)),"ค่าปรับปิดก่อน":toNumber(val(col.preclose)) };
     list.push({ id:genId(), name:val(col.name), principal:toNumber(val(col.principal)), termYears:toNumber(val(col.termYears)), rate1:toNumber(val(col.rate1)), rate2:toNumber(val(col.rate2)), rate3:toNumber(val(col.rate3)), rateAfter:toNumber(val(col.rateAfter)), monthlyOverride: val(col.monthlyOverride)===""? null: toNumber(val(col.monthlyOverride)), prepayPct:toNumber(val(col.prepayPct)), refiPref:"default", otherCosts });
   }
   return list;
