@@ -1,4 +1,4 @@
-/* app.js — 20 Aug 2025 patch: Refi term reset 30y, MRTA refund 60% at Y4, Mortgage reg % default, Balance graph uses base, NetInvestment uses cumInterestBase */
+/* app.js — 20 Aug 2025 patch22 (moved shared controls into each bank card; balance graph = base remain vs portfolio) */
 
 const { useMemo, useState, useEffect, useRef } = React;
 
@@ -236,7 +236,12 @@ function makeRateSchedule(bank, termMonths, behavior){
 const effectiveBehavior=(bankPref, globalBehavior)=> (bankPref && bankPref!=="default") ? bankPref : globalBehavior;
 
 /* ========== Editor ========== */
-function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
+function BankEditor({
+  bank, onChange, onRemove, onMoveUp, onMoveDown,
+  // 🆕 รับค่าจาก global เพื่อแสดงคอนโทรลย้ายมาที่การ์ด
+  refinanceBehavior, setRefinanceBehavior,
+  settings, setSettings
+}){
   const handle=(f,v)=> onChange({ ...bank, [f]: v });
   const handleCost=(k,v)=> onChange({ ...bank, otherCosts:{ ...(bank.otherCosts||{}), [k]:v } });
 
@@ -251,7 +256,69 @@ function BankEditor({ bank, onChange, onRemove, onMoveUp, onMoveDown }){
         </div>
       </div>
 
+      {/* 🆕 แทรกคอนโทรลจากแถบด้านบนมาไว้ในกริดของการ์ด (global state เดิม แต่ย้ายตำแหน่ง UI) */}
       <div className="grid md:grid-cols-4 grid-cols-2 gap-3">
+        <L label="Refinance">
+          <select
+            className="ipt ipt-sm"
+            value={refinanceBehavior}
+            onChange={(e)=>setRefinanceBehavior(e.target.value)}
+            aria-label="Refinance behavior"
+          >
+            <option value="none">ไม่รีไฟแนนซ์</option>
+            <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
+            <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
+          </select>
+        </L>
+
+        <L label="Refi term">
+          <select
+            className="ipt ipt-sm"
+            value={settings.refiTermMode}
+            onChange={(e)=>setSettings({...settings, refiTermMode:e.target.value})}
+            aria-label="Refi term mode"
+          >
+            <option value="remain">คงเหลือเดิม</option>
+            <option value="reset30">รีเซ็ต 30 ปี</option>
+          </select>
+        </L>
+
+        <L label="ค่าจดจำนอง %">
+          <input
+            className="ipt ipt-sm ipt-num mono"
+            style={{width:"100%"}}
+            defaultValue={settings.regFeePct}
+            onBlur={(e)=>setSettings({...settings, regFeePct: clamp3(parseMoneyInput(e.target.value))})}
+            aria-label="Mortgage registration percent"
+          />
+        </L>
+
+        <L label="MRTA refund % (เวนคืนปีที่ 4)">
+          <input
+            className="ipt ipt-sm ipt-num mono"
+            style={{width:"100%"}}
+            defaultValue={settings.mrtaRefundPct}
+            onBlur={(e)=>setSettings({...settings, mrtaRefundPct: clamp3(parseMoneyInput(e.target.value))})}
+            aria-label="MRTA refund percent"
+          />
+        </L>
+
+        <label className="block text-sm md:col-span-2">
+          <div className="text-gray-600 mb-1">MRTA in loan</div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!settings.includeMrtaInLoan}
+              onChange={(e)=>setSettings({...settings, includeMrtaInLoan:e.target.checked})}
+              aria-label="Include MRTA in loan"
+            />
+            <span className="text-sm text-gray-700">รวมเบี้ย MRTA ในวงเงินกู้</span>
+          </div>
+        </label>
+      </div>
+
+      {/* ฟอร์มข้อมูลธนาคารเดิม */}
+      <div className="grid md:grid-cols-4 grid-cols-2 gap-3 mt-3">
         <L label="ยอดกู้ (บาท)"><MoneyInput value={bank.principal} onChange={(v)=>handle("principal", v)} /></L>
         <L label="อายุสัญญา (ปี)"><MoneyInput value={bank.termYears} onChange={(v)=>handle("termYears", v)} /></L>
         <L label="ดอกเบี้ยปี 1 (%)"><RateInput value={bank.rate1} onChange={(v)=>handle("rate1", v)} /></L>
@@ -784,7 +851,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
             label="เลือกธนาคาร (กราฟ)"
             options={banks}
             valueIds={selectedIds}
-            onToggle={toggleSelect}
+            onToggle={id=>{ const has=selectedIds.includes(id); let next = has? selectedIds.filter(x=>x!==id) : [...selectedIds, id]; if(next.length>3) next=next.slice(1); setSelectedIds(next); }}
             max={3}
           />
 
@@ -792,7 +859,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
             label="เลือกคอลัมน์"
             options={METRIC_OPTIONS}
             valueIds={visibleMetrics}
-            onToggle={toggleMetric}
+            onToggle={id=> setVisibleMetrics(prev=> prev.includes(id)? prev.filter(x=>x!==id): [...prev, id])}
             max={METRIC_OPTIONS.length}
           />
 
@@ -806,7 +873,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
             >
               <option value="saved">ประหยัดดอกสะสม ↔ กำไรลงทุน</option>
               <option value="total">ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน</option>
-              <option value="balance">หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน</option>
+              <option value="balance">หนี้คงเหลือแบบไม่โปะ ↔ มูลค่าพอร์ตลงทุน</option>
             </select>
           </div>
 
@@ -929,7 +996,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
       <div className="text-xs text-gray-500">
         * ไฮไลท์เหลือง = ปีนั้นมีเดือนที่ “ค่างวด + เงินลงทุนตามที่ตั้ง” เกินเพดาน/เดือน •
         โหมดกราฟ “ประหยัดดอกสะสม” แสดง Base=0 ตามนิยาม •
-        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” และ “หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
+        โหมด “ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน” และ “หนี้คงเหลือแบบไม่โปะ ↔ มูลค่าพอร์ตลงทุน” แสดงสองเส้นต่อธนาคาร
       </div>
 
       {showChart && (
@@ -942,7 +1009,7 @@ function InvestmentView({ banks, refinanceBehavior, onChangeRefiBehavior }){
                     ? "ประหยัดดอกสะสม ↔ กำไรลงทุน"
                     : graphMode==="total"
                       ? "ดอกเบี้ยรวมสะสม ↔ มูลค่าพอร์ตลงทุน"
-                      : "หนี้คงเหลือ ↔ มูลค่าพอร์ตลงทุน"
+                      : "หนี้คงเหลือแบบไม่โปะ ↔ มูลค่าพอร์ตลงทุน"
                 }
               </div>
               <button className="focus-close" onClick={()=>setShowChart(false)}>✕ ปิด</button>
@@ -991,7 +1058,7 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
 
       const otherBase = sumOtherCosts(b.otherCosts);
 
-      // Pro table ยังคงตรรกะเดิม (ไม่รวม MRTA refund/auto reg %) เพื่อใช้เป็น baseline professional; ถ้าต้องการให้ใส่เหมือนหน้าแรก บอกได้ครับ
+      // Pro table baseline
       const first36=sched.rows.slice(0,36), first60=sched.rows.slice(0,60);
       const int3y=first36.reduce((s,r)=>s+r.interest,0);
       const int5y=first60.reduce((s,r)=>s+r.interest,0);
@@ -1075,7 +1142,7 @@ function CompareTablePro({ banks, refinanceBehavior, settings }){
                 <Td className="text-right mono"><span className={cls3}>{fmtMoney(r.total3y)}</span></Td>
                 <Td className="text-right mono">{fmtMoney(r.interest5y)}</Td>
                 <Td className="text-right mono"><span className={cls5}>{fmtMoney(r.total5y)}</span></Td>
-                <Td className="text-right mono">{formatTerm(r.payoffMonths)}</Td>
+                <Td className="text-right mono">{fmtMoney(r.payoffMonths? r.payoffMonths:0)}</Td>
                 <Td className="text-right mono">{fmtMoney(r.totalInterestAll)}</Td>
               </tr>
             );
@@ -1180,12 +1247,12 @@ function App(){
   const [focusCompare, setFocusCompare]=useState(false);
   const [refinanceBehavior, setRefinanceBehavior]=useState("none");
 
-  // 🆕 Global settings: reg %, MRTA options, refi term mode
+  // 🆕 Global settings
   const [settings, setSettings] = useLocalState("mortgage-settings", {
-    regFeePct: 1.00,           // ค่าจดจำนอง % เริ่มต้น
-    includeMrtaInLoan: false,  // กู้รวม MRTA ไหม
-    mrtaRefundPct: 60,         // เวนคืน MRTA ณ ปีที่ 4
-    refiTermMode: "remain"     // "remain" | "reset30"
+    regFeePct: 1.00,
+    includeMrtaInLoan: false,
+    mrtaRefundPct: 60,
+    refiTermMode: "remain"
   });
 
   const fileRef=React.useRef(null);
@@ -1234,34 +1301,9 @@ function App(){
           </div>
         </div>
 
+        {/* 🧷 เหลือเฉพาะปุ่มที่ขอให้คงไว้ */}
         {!isSchedule && !isInvest && !isAnalysis && (
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Refinance:</label>
-            <select className="ipt ipt-sm" value={refinanceBehavior} onChange={(e)=>setRefinanceBehavior(e.target.value)} aria-label="Refinance behavior">
-              <option value="none">ไม่รีไฟแนนซ์</option>
-              <option value="every3y">รีไฟแนนซ์ทุก 3 ปี</option>
-              <option value="every5y">รีไฟแนนซ์ทุก 5 ปี</option>
-            </select>
-
-            {/* 🆕 Refi term mode */}
-            <label className="text-sm text-gray-600">Refi term:</label>
-            <select className="ipt ipt-sm" value={settings.refiTermMode} onChange={(e)=>setSettings({...settings, refiTermMode:e.target.value})} aria-label="Refi term mode">
-              <option value="remain">คงเหลือเดิม</option>
-              <option value="reset30">รีเซ็ต 30 ปี</option>
-            </select>
-
-            {/* 🆕 Mortgage reg % */}
-            <label className="text-sm text-gray-600">ค่าจดจำนอง %</label>
-            <input className="ipt ipt-sm ipt-num mono" style={{width:90}} defaultValue={settings.regFeePct} onBlur={(e)=>setSettings({...settings, regFeePct: clamp3(parseMoneyInput(e.target.value))})}/>
-
-            {/* 🆕 MRTA options */}
-            <label className="text-sm text-gray-600 flex items-center gap-1">
-              <input type="checkbox" checked={!!settings.includeMrtaInLoan} onChange={(e)=>setSettings({...settings, includeMrtaInLoan:e.target.checked})}/>
-              MRTA in loan
-            </label>
-            <label className="text-sm text-gray-600">MRTA refund %</label>
-            <input className="ipt ipt-sm ipt-num mono" style={{width:90}} defaultValue={settings.mrtaRefundPct} onBlur={(e)=>setSettings({...settings, mrtaRefundPct: clamp3(parseMoneyInput(e.target.value))})}/>
-
             <button className="btn-secondary ipt-sm" onClick={openInvest} title="Investment view" aria-label="Open Investment">Investment</button>
             <button className="btn-secondary ipt-sm" onClick={openAnalysis} title="Pro Analysis" aria-label="Open Pro Analysis">Pro Analysis</button>
 
@@ -1278,7 +1320,18 @@ function App(){
         <div className="space-y-6">
           <div className="space-y-4">
             {banks.map((b,i)=>(
-              <BankEditor key={b.id} bank={b} onChange={(next)=>updateBank(i,next)} onRemove={()=>removeBank(i)} onMoveUp={()=>moveBank(i,-1)} onMoveDown={()=>moveBank(i,+1)} />
+              <BankEditor
+                key={b.id}
+                bank={b}
+                onChange={(next)=>updateBank(i,next)}
+                onRemove={()=>removeBank(i)}
+                onMoveUp={()=>moveBank(i,-1)}
+                onMoveDown={()=>moveBank(i,+1)}
+                refinanceBehavior={refinanceBehavior}
+                setRefinanceBehavior={setRefinanceBehavior}
+                settings={settings}
+                setSettings={setSettings}
+              />
             ))}
           </div>
 
