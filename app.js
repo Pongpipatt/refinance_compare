@@ -1,4 +1,7 @@
-/* app.js — 21 Aug 2025 patch23 (add buildScheduleWithMinRefiRule: stop refi if balance<1M at next cycle; wire up in Compare/Schedule/Investment/Pro) */
+/* app.js — 21 Aug 2025 patch24
+   - FIX buildScheduleWithMinRefiRule: ใช้เรตเป็นช่วงละ 12 เดือน/ปี (ปี1=เดือน1–12, ปี2=13–24, ปี3=25–36)
+   - คงกติกา: ถ้าถึงรอบรีฯถัดไปและ balance < 1,000,000 → หยุดรีและถือ rateAfter ยาวจนจบ พร้อมคำนวณค่างวดใหม่
+*/
 
 const { useMemo, useState, useEffect, useRef } = React;
 
@@ -146,7 +149,8 @@ function buildScheduleWithFirstReset({
   return { rows, totalInterest, totalPayment, endBalance };
 }
 
-/* --- 🆕 helper: “ถ้าขึ้นรอบรีฯถัดไปแล้วหนี้ < 1,000,000 → หยุดรีและถือ rateAfter จนจบ” --- */
+/* --- 🆕 FIXED helper: “ถ้าขึ้นรอบรีฯถัดไปแล้วหนี้ < 1,000,000 → หยุดรีและถือ rateAfter จนจบ” 
+       และในช่วงโปร 3/5 ปี ให้ “ปีละ 12 เดือน” (ปี1=1–12, ปี2=13–24, ปี3=25–36) --- */
 function buildScheduleWithMinRefiRule({
   bank, termMonths, refinanceBehavior,
   prepayPct = 0, capPerMonth = null
@@ -164,20 +168,20 @@ function buildScheduleWithMinRefiRule({
     });
   }
 
-  // ลูปเป็น "บล็อก" 3y/5y ทีละรอบ แล้วค่อยเช็คหนี้คงเหลือตอนขึ้นรอบถัดไป
+  // วนทีละ "บล็อกรีฯ" (3y/5y)
   let remainMonths = termMonths;
   let balance = bank.principal;
   const rows = [];
   let blockIndex = 0;
 
   while (remainMonths > 0 && balance > 0) {
-    // ก่อนเริ่มบล็อกใหม่ ถ้าหนี้ < 1 ล้าน → ถือ rateAfter จนจบ และ "คำนวณค่างวดใหม่"
+    // ก่อนเริ่มบล็อกใหม่: ถ้าหนี้ < 1 ล้าน → ถือ rateAfter จนจบ + คำนวณค่างวดใหม่
     if (blockIndex > 0 && balance < 1_000_000) {
       const tail = buildSchedule({
         principal: balance,
         termMonths: remainMonths,
         rateSchedule: [{ months: remainMonths, rateYear: bank.rateAfter }],
-        monthlyPaymentOverride: null, // ✅ ตัด override เพื่อให้คำนวณค่างวดใหม่จริง
+        monthlyPaymentOverride: null, // ✅ คิดค่างวดใหม่จริง
         prepayPct, capPerMonth
       });
       tail.rows.forEach((r)=> rows.push({ ...r, index: rows.length + 1 }));
@@ -186,26 +190,23 @@ function buildScheduleWithMinRefiRule({
       break;
     }
 
-    // ยังรีได้ → ทำทั้งบล็อกถัดไปด้วย pattern ปกติ
+    // ยังรีได้ → ทำบล็อกถัดไปด้วย pattern โปรฯ ปีละ 12 เดือน
     const monthsThisBlock = Math.min(cycle, remainMonths);
 
-    // pattern ของ rate ทีละบล็อก
+    // pattern ต่อปี (12 เดือน/ปี)
     const pattern = refinanceBehavior==="every3y"
       ? [bank.rate1, bank.rate2, bank.rate3]
       : [bank.rate1, bank.rate2, bank.rate3, bank.rateAfter, bank.rateAfter];
 
-    // rate ของบล็อกนี้
-    const rateThisBlock = pattern[blockIndex % pattern.length];
-
-    // rateSchedule สำหรับช่วงที่เหลือ: เริ่มด้วยบล็อกปัจจุบัน แล้วตามด้วย pattern
+    // 🔧 FIX: สร้าง rateSchedule สำหรับ "ช่วงที่เหลือ" โดยหั่นทีละ 12 เดือน/ปี
     const rs = [];
     let left = remainMonths;
-    let i = blockIndex;
+    let p = 0; // รีไฟฯรอบใหม่เริ่มที่ปี 1 เสมอ
     while (left > 0) {
-      const len = Math.min(cycle, left);
-      const rYear = (i === blockIndex) ? rateThisBlock : pattern[i % pattern.length];
+      const len = Math.min(12, left);
+      const rYear = pattern[p % pattern.length];
       rs.push({ months: len, rateYear: rYear });
-      left -= len; i++;
+      left -= len; p++;
     }
 
     const seg = buildSchedule({
@@ -216,7 +217,7 @@ function buildScheduleWithMinRefiRule({
       prepayPct, capPerMonth
     });
 
-    // เก็บเฉพาะ "บล็อกนี้" แล้วไปต่อ
+    // เก็บเฉพาะ "รอบนี้" (3y/5y) แล้วไปต่อ
     const take = seg.rows.slice(0, monthsThisBlock);
     take.forEach((r)=> rows.push({ ...r, index: rows.length + 1 }));
     balance = take.length ? take[take.length-1].endBalance : balance;
